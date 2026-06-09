@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/
+.env
+.env.local
+.env.*.local
+*.db
+.vercel
+dapp/.next/
+dapp/out/
+contracts/node_modules/

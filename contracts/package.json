@@ -1,0 +1,29 @@
+{
+  "name": "bolao-copa-contracts",
+  "version": "0.1.0",
+  "description": "Smart contracts do bolao da Copa do Mundo 2026 em CHZ (Chiliz Chain)",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "coverage": "hardhat coverage",
+    "deploy:spicy": "hardhat run scripts/deploy.ts --network spicy",
+    "deploy:chiliz": "hardhat run scripts/deploy.ts --network chiliz",
+    "node": "hardhat node",
+    "clean": "hardhat clean"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.0.2",
+    "@types/chai": "^4.3.16",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.12.12",
+    "chai": "^4.4.1",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "hardhat": "^2.22.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

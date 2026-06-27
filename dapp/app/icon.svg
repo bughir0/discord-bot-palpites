@@ -1,0 +1,16 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="palpitoGrad" x1="48" y1="48" x2="464" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#DC0728" />
+      <stop offset="1" stop-color="#F5C518" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="url(#palpitoGrad)" />
+  <path
+    fill="#FFFFFF"
+    fill-rule="evenodd"
+    clip-rule="evenodd"
+    d="M176 384 L176 128 L280 128 C350 128 392 168 392 216 C392 264 350 304 280 304 L248 304 L248 384 Z
+       M248 192 L248 240 L288 240 C312 240 328 230 328 216 C328 202 312 192 288 192 Z"
+  />
+</svg>

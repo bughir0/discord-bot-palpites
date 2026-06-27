@@ -3,6 +3,7 @@ import { pointsModule } from '../modules/points/module';
 import { walletsModule } from '../modules/wallets/module';
 import { eventsModule } from '../modules/events/module';
 import { quizModule } from '../modules/quiz/module';
+import { maintenanceCommand } from '../commands/maintenance';
 import type { BotModule } from './types';
 
 /** Todos os módulos do Palpito */
@@ -15,5 +16,5 @@ export const modules: BotModule[] = [
 ];
 
 export function allCommands() {
-  return modules.flatMap((m) => m.commands);
+  return [...modules.flatMap((m) => m.commands), maintenanceCommand];
 }

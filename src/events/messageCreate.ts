@@ -1,8 +1,11 @@
 import { Events, type Client, type Message } from 'discord.js';
 import { modules } from '../core/registry';
+import { isMaintenanceActive } from '../services/maintenanceMode';
 
 export function registerMessageEvent(client: Client): void {
   client.on(Events.MessageCreate, async (message: Message) => {
+    if (isMaintenanceActive()) return;
+
     for (const mod of modules) {
       if (mod.onMessage) {
         try {

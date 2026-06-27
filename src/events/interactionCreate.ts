@@ -7,9 +7,14 @@ import {
 import type { Client } from 'discord.js';
 import { modules } from '../core/registry';
 import { buildErrorEmbed } from '../embeds/builders';
+import {
+  isMaintenanceActive,
+  replyMaintenanceBlocked,
+} from '../services/maintenanceMode';
 import { log } from '../utils/logger';
 
 const DISCORD_UNKNOWN_INTERACTION = 10062;
+const MAINTENANCE_COMMAND = 'modo-manutencao';
 
 export function registerInteractionEvent(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
@@ -17,7 +22,27 @@ export function registerInteractionEvent(client: Client): void {
       if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
+
+        if (interaction.commandName === MAINTENANCE_COMMAND) {
+          await command.execute(interaction);
+          return;
+        }
+
+        if (isMaintenanceActive()) {
+          await replyMaintenanceBlocked(interaction);
+          return;
+        }
+
         await command.execute(interaction);
+        return;
+      }
+
+      if (isMaintenanceActive()) {
+        if (interaction.isAutocomplete()) {
+          await interaction.respond([]);
+          return;
+        }
+        await replyMaintenanceBlocked(interaction);
         return;
       }
 

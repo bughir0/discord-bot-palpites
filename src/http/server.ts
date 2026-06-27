@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import { env } from '../config';
 import { log } from '../utils/logger';
+import { isMaintenanceActive } from '../services/maintenanceMode';
 import { registerSessionRoutes } from './routes/sessions';
 import { registerWalletRoutes } from './routes/wallet';
 import { registerRodadaRoutes } from './routes/rodadas';
@@ -23,7 +24,20 @@ export async function startHttpServer(): Promise<FastifyInstance | null> {
     );
   await fastify.register(cors, { origin: origin.length ? origin : true });
 
-  fastify.get('/healthz', async () => ({ ok: true, ts: Date.now() }));
+  fastify.get('/healthz', async () => ({
+    ok: true,
+    ts: Date.now(),
+    maintenance: isMaintenanceActive(),
+  }));
+
+  fastify.addHook('onRequest', async (request, reply) => {
+    if (request.url === '/healthz' || request.url.startsWith('/healthz?')) return;
+    if (!isMaintenanceActive()) return;
+    return reply.status(503).send({
+      error: 'manutencao',
+      message: 'Bot em modo manutenção. Tente novamente em breve.',
+    });
+  });
 
   registerSessionRoutes(fastify);
   registerWalletRoutes(fastify);

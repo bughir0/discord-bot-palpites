@@ -3,6 +3,7 @@ import type { Client } from 'discord.js';
 import { env } from '../config';
 import { ApiFutebolError, getApiUsageToday, isApiQuotaExhausted } from '../services/apiFutebol';
 import { configService } from '../services/configService';
+import { isMaintenanceActive } from '../services/maintenanceMode';
 import { partidaProntaParaVerificar } from '../services/pontuacao';
 import { publicarResultadosRodada } from '../services/publicarResultados';
 import { rodadaService } from '../services/rodadaService';
@@ -35,6 +36,11 @@ async function publicarSeFinalizada(
 }
 
 async function verificarResultados(client: Client): Promise<void> {
+  if (isMaintenanceActive()) {
+    log.detail('Modo manutenção — pulando verificação de resultados.');
+    return;
+  }
+
   const uso = getApiUsageToday();
   log.job('⏰', 'Verificação resultados', `API ${uso.count}/${uso.limit}`);
 

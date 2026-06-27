@@ -1,6 +1,10 @@
-import { ActivityType, Events, type Client } from 'discord.js';
+import { Events, type Client } from 'discord.js';
 import { modules } from '../core/registry';
 import { getApiUsageToday } from '../services/apiFutebol';
+import {
+  applyMaintenancePresence,
+  isMaintenanceActive,
+} from '../services/maintenanceMode';
 import { log } from '../utils/logger';
 
 export function registerReadyEvent(client: Client): void {
@@ -10,6 +14,9 @@ export function registerReadyEvent(client: Client): void {
     log.success(`Palpito online como ${client.user?.tag}`);
     log.info(`Módulos: ${labels}`);
     log.info(`API Futebol hoje: ${api.count}/${api.limit} requisições`);
-    client.user?.setActivity('Palpito | /quiz /evento', { type: ActivityType.Watching });
+    if (isMaintenanceActive()) {
+      log.warn('Modo manutenção ATIVO — comandos e automações pausados.');
+    }
+    applyMaintenancePresence(client);
   });
 }

@@ -3,11 +3,17 @@ import type { Client } from 'discord.js';
 import { env } from '../config';
 import { ApiFutebolError, getApiUsageToday, isApiQuotaExhausted } from '../services/apiFutebol';
 import { configService } from '../services/configService';
+import { isMaintenanceActive } from '../services/maintenanceMode';
 import { publicarEmbedRodada } from '../services/publicarRodada';
 import { rodadaService } from '../services/rodadaService';
 import { log } from '../utils/logger';
 
 async function tentarAbrirRodadas(client: Client): Promise<void> {
+  if (isMaintenanceActive()) {
+    log.detail('Modo manutenção — pulando abertura automática de rodada.');
+    return;
+  }
+
   const uso = getApiUsageToday();
   log.job('📅', 'Cron abrir rodada', `API ${uso.count}/${uso.limit}`);
 

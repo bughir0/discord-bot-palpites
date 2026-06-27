@@ -1,8 +1,14 @@
 const path = require("path");
-const { config: loadEnv } = require("dotenv");
 
-// Um único .env na raiz do monorepo (bot + dApp)
-loadEnv({ path: path.join(__dirname, "..", ".env") });
+// Um único .env na raiz do monorepo (bot + dApp), quando rodando localmente.
+// Em deploy (ex.: Vercel com Root Directory = dapp) o dotenv pode não estar
+// instalado e as variáveis vêm do painel — por isso o carregamento é opcional.
+try {
+  const { config: loadEnv } = require("dotenv");
+  loadEnv({ path: path.join(__dirname, "..", ".env") });
+} catch {
+  // dotenv ausente (ambiente de deploy): usa as variáveis do próprio ambiente.
+}
 
 const optionalStub = path.join(__dirname, "lib/stubs/empty.js");
 

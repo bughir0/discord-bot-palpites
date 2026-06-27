@@ -16,7 +16,7 @@ class WalletLinkService {
     const now = new Date();
     const expira = new Date(now.getTime() + TTL_MIN * 60_000);
     const mensagem =
-      `Vinculando minha wallet ao Palpiter CHZ.\n` +
+      `Vinculando minha wallet ao Palpito.\n` +
       `Discord: ${args.discordUserId}\n` +
       `Token: ${token}\n` +
       `Criado: ${now.toISOString()}`;

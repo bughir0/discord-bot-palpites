@@ -1,10 +1,24 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { env } from '../config';
 import { log } from '../utils/logger';
 
 let dappProcess: ChildProcess | null = null;
+
+function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', (err: NodeJS.ErrnoException) => {
+      resolve(err.code === 'EADDRINUSE');
+    });
+    probe.once('listening', () => {
+      probe.close(() => resolve(false));
+    });
+    probe.listen(port, '127.0.0.1');
+  });
+}
 
 function isLocalDappUrl(url: string): boolean {
   try {
@@ -25,18 +39,28 @@ function dappPortFromUrl(url: string): number {
   }
 }
 
+function localDappUrl(): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (appUrl && isLocalDappUrl(appUrl)) {
+    return appUrl.replace(/\/+$/, '');
+  }
+  return 'http://localhost:3000';
+}
+
 export function shouldAutoStartDapp(): boolean {
   const raw = process.env.DAPP_AUTO_START?.trim().toLowerCase();
   if (raw === 'false' || raw === '0' || raw === 'no') return false;
   if (raw === 'true' || raw === '1' || raw === 'yes') return true;
+  // Padrão: inicia o site junto com o bot em desenvolvimento local
+  if (process.env.NODE_ENV !== 'production') return true;
+  // Em produção só inicia se o dApp apontar para localhost (mesmo servidor)
   return isLocalDappUrl(env.dappBaseUrl);
 }
 
-export function startDapp(): void {
+export async function startDapp(): Promise<void> {
   if (!shouldAutoStartDapp()) {
     log.info(
-      `dApp não iniciado automaticamente (DAPP_BASE_URL=${env.dappBaseUrl}). ` +
-        'Use DAPP_AUTO_START=true ou aponte DAPP_BASE_URL para localhost.',
+      'dApp não iniciado automaticamente (DAPP_AUTO_START=false ou ambiente de produção).',
     );
     return;
   }
@@ -57,7 +81,16 @@ export function startDapp(): void {
     return;
   }
 
-  const port = dappPortFromUrl(env.dappBaseUrl);
+  const localUrl = localDappUrl();
+  const port = dappPortFromUrl(localUrl);
+
+  if (await isPortInUse(port)) {
+    log.info(
+      `dApp já está ativo em ${localUrl} (porta ${port} em uso) — não iniciando outro processo.`,
+    );
+    return;
+  }
+
   const isProd = process.env.NODE_ENV === 'production';
   const npmScript = isProd ? 'start' : 'dev';
 
@@ -66,7 +99,7 @@ export function startDapp(): void {
     return;
   }
 
-  log.info(`Iniciando mini dApp (npm run ${npmScript}) em ${env.dappBaseUrl}…`);
+  log.info(`Iniciando mini dApp (npm run ${npmScript}) em ${localUrl}…`);
 
   dappProcess = spawn('npm', ['run', npmScript], {
     cwd: dappDir,
@@ -74,7 +107,7 @@ export function startDapp(): void {
     env: {
       ...process.env,
       PORT: String(port),
-      NEXT_PUBLIC_APP_URL: env.dappBaseUrl,
+      NEXT_PUBLIC_APP_URL: localUrl,
       BOT_API_URL: `http://localhost:${env.botApiPort}`,
       NEXT_PUBLIC_BOT_API_URL: `http://localhost:${env.botApiPort}`,
     },

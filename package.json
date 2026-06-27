@@ -1,7 +1,7 @@
 {
-  "name": "discord-bot-palpites",
-  "version": "1.0.0",
-  "description": "Bot de palpites do Brasileirão para Discord com API Futebol",
+  "name": "palpito",
+  "version": "2.0.0",
+  "description": "Palpito — palpites, eventos, quiz, pontos e wallets no Discord + web",
   "main": "dist/index.js",
   "keywords": [
     "discord",
@@ -18,7 +18,11 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "register": "tsx src/register-commands.ts"
+    "register": "tsx src/register-commands.ts",
+    "migrate:legacy": "tsx scripts/migrate-legacy-data.ts",
+    "audit:migration": "tsx scripts/audit-migration.ts",
+    "expose-api": "powershell -ExecutionPolicy Bypass -File ./scripts/expose-bot-api.ps1",
+    "squarecloud:zip": "powershell -ExecutionPolicy Bypass -File ./scripts/build-squarecloud-zip.ps1"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
@@ -27,12 +31,14 @@
     "dotenv": "^16.4.7",
     "ethers": "^6.16.0",
     "fastify": "^4.29.1",
+    "googleapis": "^144.0.0",
     "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^24.0.0",
     "@types/node-cron": "^3.0.11",
+    "pg": "^8.22.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }

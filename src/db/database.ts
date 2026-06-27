@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { env } from '../config';
+import { initCommunitySchema } from './schema-community';
+import { initSiteAdminSchema } from './schema-site-admins';
 
 let db: Database.Database | null = null;
 
@@ -17,6 +19,8 @@ export function getDb(): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   initSchema(db);
+  initCommunitySchema(db);
+  initSiteAdminSchema(db);
   return db;
 }
 

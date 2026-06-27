@@ -145,6 +145,12 @@ export const bolaoChzCmd: BotCommand = {
   },
 };
 
+function partidasAbertasBolao(partidas: PartidaRodada[]): PartidaRodada[] {
+  return partidas.filter((p) =>
+    partidaAbertaParaPalpite(p.status, p.data_realizacao_iso, p.processada),
+  );
+}
+
 function buildBolaoChzComponents(
   rodadaId: number,
   partidas: PartidaRodada[],
@@ -205,9 +211,10 @@ export async function replyBolaoChzSelect(
   }
 
   const partidas = rodadaService.getPartidasRodada(rodada.id);
-  if (partidas.length === 0) {
+  const abertas = partidasAbertasBolao(partidas);
+  if (abertas.length === 0) {
     await interaction.reply({
-      embeds: [buildErrorEmbed('A rodada nao tem jogos cadastrados.')],
+      embeds: [buildErrorEmbed('Nenhum jogo aberto para palpite nesta rodada.')],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -216,7 +223,7 @@ export async function replyBolaoChzSelect(
   const draftCount = bolaoChzDraftStore.count(interaction.user.id, rodada.id);
 
   await interaction.reply({
-    content: buildBolaoChzPainelContent(draftCount, partidas.length),
+    content: buildBolaoChzPainelContent(draftCount, abertas.length),
     embeds: [
       new EmbedBuilder()
         .setColor(0xdc0728)
@@ -224,7 +231,7 @@ export async function replyBolaoChzSelect(
           '_Você não precisa palpitar em todos os jogos — escolha apenas os que quiser participar no bolão._',
         ),
     ],
-    components: buildBolaoChzComponents(rodada.id, partidas, draftCount),
+    components: buildBolaoChzComponents(rodada.id, abertas, draftCount),
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -239,6 +246,16 @@ export async function handleBolaoChzSelectMenu(
   if (!partida) {
     await interaction.reply({
       embeds: [buildErrorEmbed('Partida não encontrada.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (
+    !partidaAbertaParaPalpite(partida.status, partida.data_realizacao_iso, partida.processada)
+  ) {
+    await interaction.reply({
+      embeds: [buildErrorEmbed('Palpites encerrados para este jogo.')],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -310,8 +327,18 @@ export async function handleBolaoChzPalpiteModal(
     return;
   }
 
+  if (
+    !partidaAbertaParaPalpite(partida.status, partida.data_realizacao_iso, partida.processada)
+  ) {
+    await interaction.editReply({
+      embeds: [buildErrorEmbed('Palpites encerrados para este jogo.')],
+    });
+    return;
+  }
+
   const config = configService.getOrCreate(interaction.guildId!);
   const partidas = rodadaService.getPartidasRodada(rodadaId);
+  const abertas = partidasAbertasBolao(partidas);
   const jaPalpitado = bolaoChzDraftStore.getPalpitados(interaction.user.id, rodadaId).has(partidaId);
 
   bolaoChzDraftStore.salvar(interaction.user.id, rodadaId, partidaId, mandante, visitante);
@@ -325,8 +352,8 @@ export async function handleBolaoChzPalpiteModal(
         rodada,
       }),
     ],
-    content: buildBolaoChzPainelContent(draftCount, partidas.length),
-    components: buildBolaoChzComponents(rodadaId, partidas, draftCount),
+    content: buildBolaoChzPainelContent(draftCount, abertas.length),
+    components: buildBolaoChzComponents(rodadaId, abertas, draftCount),
   });
 }
 
@@ -353,13 +380,25 @@ export async function finalizarBolaoChz(
     return;
   }
 
-  const palpites = bolaoChzDraftStore.toPalpiteSessions(interaction.user.id, rodadaId);
+  const palpites = bolaoChzDraftStore
+    .toPalpiteSessions(interaction.user.id, rodadaId)
+    .filter((p) => {
+      const partida = rodadaService.getPartida(rodadaId, p.partidaId);
+      return (
+        partida &&
+        partidaAbertaParaPalpite(
+          partida.status,
+          partida.data_realizacao_iso,
+          partida.processada,
+        )
+      );
+    });
 
   if (palpites.length === 0) {
     const payload = {
       embeds: [
         buildErrorEmbed(
-          'Adicione pelo menos **1 jogo** ao rascunho antes de ir para o pagamento.',
+          'Nenhum jogo aberto no rascunho. Escolha partidas que ainda não começaram ou já encerraram.',
         ),
       ],
     };

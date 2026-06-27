@@ -1,7 +1,10 @@
 import { createClient } from './bot/client';
+import { bootstrapModules, registerModuleJobs } from './core/bootstrap';
+import { modules } from './core/registry';
 import { env, onchainEnabled } from './config';
 import { getDb, closeDb } from './db/database';
 import { registerReadyEvent } from './events/ready';
+import { registerMessageEvent } from './events/messageCreate';
 import { registerInteractionEvent } from './events/interactionCreate';
 import { startAbrirRodadaJob } from './jobs/abrirRodada';
 import { startResultadosJob } from './jobs/verificarResultados';
@@ -16,8 +19,10 @@ async function main(): Promise<void> {
   const client = createClient();
   registerReadyEvent(client);
   registerInteractionEvent(client);
+  registerMessageEvent(client);
   startResultadosJob(client);
   startAbrirRodadaJob(client);
+  registerModuleJobs(client);
 
   if (onchainEnabled) {
     log.info('Modo on-chain HABILITADO (Copa CHZ).');
@@ -35,7 +40,9 @@ async function main(): Promise<void> {
   }
 
   await startHttpServer();
-  startDapp();
+  await startDapp();
+
+  await bootstrapModules(client);
 
   const shutdown = async (): Promise<void> => {
     log.info('Encerrando bot…');

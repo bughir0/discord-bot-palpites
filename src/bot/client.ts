@@ -1,14 +1,19 @@
 import { Client, Collection, GatewayIntentBits, Partials } from 'discord.js';
-import { commands } from '../commands';
+import { allCommands } from '../core/registry';
 
 export function createClient(): Client {
   const client = new Client({
-    intents: [GatewayIntentBits.Guilds],
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMembers,
+    ],
     partials: [Partials.Channel],
   });
 
   client.commands = new Collection();
-  for (const command of commands) {
+  for (const command of allCommands()) {
     client.commands.set(command.data.name, command);
   }
 

@@ -1,6 +1,8 @@
-# ⚽ Bot de Palpites — Brasileirão
+# Palpito
 
-Bot Discord em TypeScript para palpites do Campeonato Brasileiro, integrado com a [API Futebol](https://api-futebol.com.br/documentacao).
+Bot Discord + site para palpites da Copa, quiz ao vivo, eventos, pontos, loja e wallets CHZ.
+
+Integração com a [API Futebol](https://api-futebol.com.br/documentacao) para rodadas e resultados.
 
 ## Funcionalidades
 
@@ -20,7 +22,7 @@ Bot Discord em TypeScript para palpites do Campeonato Brasileiro, integrado com 
 ## Instalação
 
 ```bash
-cd discord-bot-palpites
+cd palpito
 npm install
 cp .env.example .env
 ```

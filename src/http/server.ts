@@ -6,6 +6,8 @@ import { registerSessionRoutes } from './routes/sessions';
 import { registerWalletRoutes } from './routes/wallet';
 import { registerRodadaRoutes } from './routes/rodadas';
 import { registerSiteRoutes } from './routes/site';
+import { registerQuizRoutes } from './routes/quiz';
+import { registerSiteAdminRoutes } from './routes/site-admins';
 
 let serverSingleton: FastifyInstance | null = null;
 
@@ -27,6 +29,8 @@ export async function startHttpServer(): Promise<FastifyInstance | null> {
   registerWalletRoutes(fastify);
   registerRodadaRoutes(fastify);
   registerSiteRoutes(fastify);
+  registerSiteAdminRoutes(fastify);
+  registerQuizRoutes(fastify);
 
   try {
     const address = await fastify.listen({ port: env.botApiPort, host: '0.0.0.0' });

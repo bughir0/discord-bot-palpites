@@ -13,6 +13,7 @@ import {
   partidaJaIniciou,
   partidaProntaParaVerificar,
 } from './pontuacao';
+import { rewardPalpitePoints } from '../modules/points/rewards';
 import type {
   Palpite,
   PartidaRodada,
@@ -331,7 +332,13 @@ export class RodadaService {
   ): Palpite {
     const partida = this.getPartida(rodadaId, partidaId);
     if (!partida) throw new Error('Partida não encontrada nesta rodada.');
-    if (!partidaAbertaParaPalpite(partida.status, partida.data_realizacao_iso)) {
+    if (
+      !partidaAbertaParaPalpite(
+        partida.status,
+        partida.data_realizacao_iso,
+        partida.processada,
+      )
+    ) {
       throw new Error('Palpites encerrados para este jogo.');
     }
 
@@ -569,6 +576,10 @@ export class RodadaService {
           resultado.pontos,
           palpite.id,
         );
+        if (resultado.pontos > 0) {
+          const tipo = resultado.tipo === 'exato' ? 'exato' : 'vencedor';
+          rewardPalpitePoints(palpite.discord_user_id, tipo, rodadaId, partida.partida_id);
+        }
         resultados.push({ ...resultado, palpite: { ...palpite, pontos: resultado.pontos } });
       }
 

@@ -42,14 +42,26 @@ export const env = {
     (process.env.CHILIZ_PAYMENT_RECEIVER_ADDRESS ?? '').toLowerCase() || null,
   /** URL pública do mini-dApp (Vercel/local) usada para gerar links de aposta. */
   dappBaseUrl: process.env.DAPP_BASE_URL ?? 'http://localhost:3000',
-  /** Porta do mini HTTP server interno (consumido pelo dApp) */
-  botApiPort: Number(process.env.BOT_API_PORT ?? '3001'),
+  /** Porta HTTP. Hosts PaaS (Square Cloud) injetam PORT=80 — tem prioridade sobre BOT_API_PORT. */
+  botApiPort: Number(process.env.PORT ?? process.env.BOT_API_PORT ?? '3001'),
   /** Origem permitida no CORS do HTTP server (padrão: DAPP_BASE_URL) */
   botApiCorsOrigin: process.env.BOT_API_CORS_ORIGIN ?? null,
   /** Tempo de vida de uma sessão de aposta em minutos (padrão 30 min) */
   apostaSessionTtlMin: Number(process.env.APOSTA_SESSION_TTL_MIN ?? '30'),
   /** Entrada padrão (em CHZ) ao abrir uma rodada Copa, se admin não especificar */
   copaEntradaCHZDefault: process.env.COPA_ENTRADA_CHZ_DEFAULT ?? '10',
+
+  /** Canal do ranking semanal de pontos (ex-chiliz bot) */
+  coRankingChannelId: process.env.CO_RANKING_CHANNEL_ID ?? null,
+  /** Canal de logs administrativos (eventos, pontos) */
+  coLogChannelId: process.env.CO_LOG_CHANNEL_ID ?? null,
+
+  /** Recompensas automáticas (pontos da comunidade) */
+  pointsEnabled: process.env.POINTS_REWARDS_ENABLED !== 'false',
+  pointsEventParticipation: Number(process.env.POINTS_EVENT_PARTICIPATION ?? '5'),
+  pointsQuizPerCorrect: Number(process.env.POINTS_QUIZ_PER_CORRECT ?? '1'),
+  pointsPalpiteExato: Number(process.env.POINTS_PALPITE_EXATO ?? '3'),
+  pointsPalpiteVencedor: Number(process.env.POINTS_PALPITE_VENCEDOR ?? '1'),
 };
 
 /** True quando o bot pode validar pagamentos na chain (modo transferencia CHZ). */

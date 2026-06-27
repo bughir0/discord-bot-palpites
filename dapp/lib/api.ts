@@ -71,6 +71,7 @@ export type SiteEstado = {
     placarMandante: number | null;
     placarVisitante: number | null;
     processada: boolean;
+    abertaParaPalpite?: boolean;
   }>;
   ranking?: Array<{
     discord_user_id: string;
@@ -85,6 +86,7 @@ export type SiteEstado = {
 export type SitePalpites = {
   rodadaId: number;
   discordUserId: string;
+  discordUsername: string;
   wallet: string;
   palpites: Array<{
     partidaId: number;
@@ -92,6 +94,14 @@ export type SitePalpites = {
     visitante: number;
     pontos: number;
   }>;
+  resumo: {
+    posicao: number | null;
+    totalParticipantes: number;
+    totalPontos: number;
+    acertosExatos: number;
+    acertosVencedor: number;
+    totalPalpites: number;
+  };
 };
 
 function formatFetchError(path: string, err: unknown): Error {

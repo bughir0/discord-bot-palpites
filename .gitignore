@@ -8,4 +8,4 @@ data/
 .vercel
 dapp/.next/
 dapp/out/
-contracts/node_modules/
+squarecloud-deploy.zip

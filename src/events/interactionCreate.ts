@@ -5,11 +5,10 @@ import {
   DiscordAPIError,
 } from 'discord.js';
 import type { Client } from 'discord.js';
-import { handleButton, handleModal, handleSelectMenu } from '../commands';
+import { modules } from '../core/registry';
 import { buildErrorEmbed } from '../embeds/builders';
 import { log } from '../utils/logger';
 
-/** Códigos de erro do Discord que ignoramos silenciosamente */
 const DISCORD_UNKNOWN_INTERACTION = 10062;
 
 export function registerInteractionEvent(client: Client): void {
@@ -22,18 +21,15 @@ export function registerInteractionEvent(client: Client): void {
         return;
       }
 
-      if (interaction.isButton()) {
-        await handleButton(interaction);
+      if (interaction.isAutocomplete()) {
+        for (const mod of modules) {
+          if (mod.handleInteraction && (await mod.handleInteraction(interaction))) return;
+        }
         return;
       }
 
-      if (interaction.isStringSelectMenu()) {
-        await handleSelectMenu(interaction);
-        return;
-      }
-
-      if (interaction.isModalSubmit()) {
-        await handleModal(interaction);
+      for (const mod of modules) {
+        if (mod.handleInteraction && (await mod.handleInteraction(interaction))) return;
       }
     } catch (error) {
       log.error('Erro na interação:', error);

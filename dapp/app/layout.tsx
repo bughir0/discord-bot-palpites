@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { SiteBackground } from "@/components/SiteBackground";
-import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Palpiter CHZ",
-  description: "Palpiter CHZ para palpites da Copa do Mundo 2026",
+  title: "Palpito",
+  description: "Palpites da Copa, quiz e eventos — Discord + web",
 };
 
 export default function RootLayout({
@@ -16,10 +15,8 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
-        <Providers>
-          <SiteBackground />
-          <div className="relative min-h-screen">{children}</div>
-        </Providers>
+        <SiteBackground />
+        <div className="relative min-h-screen">{children}</div>
       </body>
     </html>
   );

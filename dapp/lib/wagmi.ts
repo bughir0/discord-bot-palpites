@@ -10,7 +10,7 @@ import {
 export { hasOwnWalletConnectProjectId as walletConnectEnabled } from "./wallets";
 
 export const wagmiConfig = getDefaultConfig({
-  appName: "Palpiter CHZ",
+  appName: "Palpito",
   appDescription: "Palpites da Copa do Mundo na Chiliz Chain",
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   projectId: walletConnectProjectId,

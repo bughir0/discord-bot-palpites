@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -9,6 +9,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { SiteMain } from "@/components/SiteMain";
 import { ACTIVE_CHAIN } from "@/lib/chains";
 import { api } from "@/lib/api";
+import { partidaAbertaParaPalpite } from "@/lib/partida";
+import { CopaXSimulator } from "@/components/CopaXSimulator";
 
 type ScoreMap = Record<number, { mandante: string; visitante: string }>;
 
@@ -54,11 +56,27 @@ export default function PalpitesPage() {
     setScores(next);
   }, [partidas, meusPalpites.data]);
 
+  const partidasAbertas = useMemo(
+    () =>
+      partidas.filter((p) =>
+        partidaAbertaParaPalpite(p.status, p.dataIso, p.processada),
+      ),
+    [partidas],
+  );
+
+  const partidasEncerradas = useMemo(
+    () =>
+      partidas.filter(
+        (p) => !partidaAbertaParaPalpite(p.status, p.dataIso, p.processada),
+      ),
+    [partidas],
+  );
+
   const salvarMutation = useMutation({
     mutationFn: async () => {
       if (!rodada?.id || !address) throw new Error("Rodada ou wallet ausente.");
 
-      const palpites = partidas
+      const palpites = partidasAbertas
         .map((p) => {
           const item = scores[p.partidaId] ?? { mandante: "", visitante: "" };
           if (item.mandante === "" || item.visitante === "") return null;
@@ -89,23 +107,42 @@ export default function PalpitesPage() {
     },
   });
 
-  const jogosProcessados = useMemo(
-    () => partidas.filter((p) => p.processada),
-    [partidas],
-  );
-
   const preenchidos = useMemo(
     () =>
-      partidas.filter((p) => {
+      partidasAbertas.filter((p) => {
         const s = scores[p.partidaId];
         return s?.mandante !== "" && s?.visitante !== "";
       }).length,
-    [partidas, scores],
+    [partidasAbertas, scores],
   );
 
+  const palpitePorJogo = useMemo(() => {
+    const map = new Map<
+      number,
+      { mandante: number; visitante: number; pontos: number }
+    >();
+    for (const p of meusPalpites.data?.palpites ?? []) {
+      map.set(p.partidaId, p);
+    }
+    return map;
+  }, [meusPalpites.data]);
+
+  const walletNaoVinculada =
+    isConnected &&
+    meusPalpites.isError &&
+    (meusPalpites.error as Error)?.message.includes("404");
+
+  const meuDiscordId = meusPalpites.data?.discordUserId;
+  const meuResumo = meusPalpites.data?.resumo;
+
   const podeSalvar =
-    Boolean(rodada && rodada.status === "aberta" && isConnected && !redeErrada) &&
-    !salvarMutation.isPending;
+    Boolean(
+      rodada &&
+        rodada.status === "aberta" &&
+        partidasAbertas.length > 0 &&
+        isConnected &&
+        !redeErrada,
+    ) && !salvarMutation.isPending;
 
   const entradaChz = rodada?.entradaCHZWei
     ? Number(BigInt(rodada.entradaCHZWei) / 10n ** 18n).toString()
@@ -126,10 +163,12 @@ export default function PalpitesPage() {
             <span className="glow-text-animated">igual Discord</span>
           </h1>
           <p className="mt-3 max-w-2xl text-zinc-400">
-            Mesma rodada, mesmos resultados e ranking — direto pelo navegador com
-            wallet vinculada.
+            Conecte a wallet vinculada ao Discord — ela funciona como seu &quot;login&quot;.
+            Palpites, pontos e ranking são os mesmos do servidor.
           </p>
         </section>
+
+        <CopaXSimulator />
 
         {estado.isLoading && <Aviso tone="info">Carregando rodada...</Aviso>}
         {estado.error && (
@@ -152,8 +191,12 @@ export default function PalpitesPage() {
                 <MiniStat label="Entrada CHZ" value={entradaChz} highlight />
                 <MiniStat label="Partidas" value={String(partidas.length)} />
                 <MiniStat
+                  label="Abertas"
+                  value={String(partidasAbertas.length)}
+                />
+                <MiniStat
                   label="Preenchidos"
-                  value={`${preenchidos}/${partidas.length}`}
+                  value={`${preenchidos}/${partidasAbertas.length}`}
                 />
               </div>
             </div>
@@ -171,9 +214,62 @@ export default function PalpitesPage() {
 
         {!isConnected && (
           <Aviso tone="info">
-            Conecte a wallet no topo. O site usa a wallet vinculada ao Discord para
-            identificar seu palpite.
+            <strong>Passo 1:</strong> conecte a wallet no topo.{" "}
+            <strong>Passo 2:</strong> no Discord, use{" "}
+            <code className="rounded bg-black/40 px-1">/wallet vincular</code> e
+            assine com a mesma wallet. Assim o site sabe quem você é e mostra sua
+            pontuação.
           </Aviso>
+        )}
+
+        {walletNaoVinculada && (
+          <Aviso tone="erro">
+            Wallet conectada, mas não vinculada ao Discord. Abra o Discord do
+            bolão, use <code className="rounded bg-black/40 px-1">/wallet vincular</code>,
+            conecte esta mesma wallet e assine a mensagem. Depois recarregue esta
+            página.
+          </Aviso>
+        )}
+
+        {isConnected && meuResumo && !walletNaoVinculada && (
+          <section className="glass-panel-strong animate-fade-up mb-6 rounded-3xl border border-chiliz/20 p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-chiliz-gold">
+                  Minha pontuação
+                </p>
+                <p className="mt-1 text-lg font-bold">
+                  {meusPalpites.data?.discordUsername ?? "Você"}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Conta ligada à wallet · mesmo ranking do Discord
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <MiniStat
+                  label="Total de pontos"
+                  value={String(meuResumo.totalPontos)}
+                  highlight
+                />
+                <MiniStat
+                  label="Posição"
+                  value={
+                    meuResumo.posicao
+                      ? `#${meuResumo.posicao} de ${meuResumo.totalParticipantes}`
+                      : "—"
+                  }
+                />
+                <MiniStat
+                  label="Placares exatos"
+                  value={String(meuResumo.acertosExatos)}
+                />
+                <MiniStat
+                  label="Acertou vencedor"
+                  value={String(meuResumo.acertosVencedor)}
+                />
+              </div>
+            </div>
+          </section>
         )}
 
         {rodada && partidas.length > 0 && (
@@ -182,86 +278,165 @@ export default function PalpitesPage() {
               <div>
                 <h2 className="text-xl font-bold">Seus palpites</h2>
                 <p className="text-sm text-zinc-500">
-                  {rodada.status === "aberta"
-                    ? "Preencha os placares e salve antes do fechamento."
-                    : "Rodada fechada — palpites bloqueados."}
+                  {rodada.status !== "aberta"
+                    ? "Rodada fechada — palpites bloqueados."
+                    : partidasAbertas.length === 0
+                      ? "Nenhum jogo aberto para palpite no momento."
+                      : "Preencha os placares dos jogos abertos e salve antes do início."}
                 </p>
               </div>
-              <button
-                onClick={() => salvarMutation.mutate()}
-                disabled={!podeSalvar}
-                className="btn-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
-              >
-                {salvarMutation.isPending ? "Salvando..." : "Salvar palpites"}
-              </button>
+              {partidasAbertas.length > 0 && (
+                <button
+                  onClick={() => salvarMutation.mutate()}
+                  disabled={!podeSalvar}
+                  className="btn-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                >
+                  {salvarMutation.isPending ? "Salvando..." : "Salvar palpites"}
+                </button>
+              )}
             </div>
 
-            <div className="space-y-3">
-              {partidas.map((p, idx) => {
-                const value = scores[p.partidaId] ?? { mandante: "", visitante: "" };
-                return (
-                  <div
-                    key={p.partidaId}
-                    className="match-card animate-fade-up"
-                    style={{ animationDelay: `${Math.min(idx * 60, 400)}ms` }}
-                  >
-                    <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
-                      <span className="rounded-full bg-white/5 px-2 py-0.5">
-                        Jogo #{p.partidaId}
-                      </span>
-                      <span>
-                        {p.dataIso
-                          ? new Date(p.dataIso).toLocaleString("pt-BR")
-                          : "-"}
-                      </span>
-                    </div>
+            {partidasAbertas.length > 0 ? (
+              <div className="space-y-3">
+                {partidasAbertas.map((p, idx) => {
+                  const value = scores[p.partidaId] ?? { mandante: "", visitante: "" };
+                  const bloqueado = rodada.status !== "aberta";
+                  return (
+                    <div
+                      key={p.partidaId}
+                      className="match-card animate-fade-up"
+                      style={{ animationDelay: `${Math.min(idx * 60, 400)}ms` }}
+                    >
+                      <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
+                        <span className="rounded-full bg-white/5 px-2 py-0.5">
+                          Jogo #{p.partidaId}
+                        </span>
+                        <span>
+                          {p.dataIso
+                            ? new Date(p.dataIso).toLocaleString("pt-BR")
+                            : "-"}
+                        </span>
+                      </div>
 
-                    <div className="grid grid-cols-[1fr_auto_auto_auto_1fr] items-center gap-2 sm:gap-4">
-                      <TeamSide
-                        escudo={p.escudoMandante}
-                        nome={p.siglaMandante ?? p.timeMandante}
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        max={20}
-                        value={value.mandante}
-                        onChange={(e) =>
-                          setScores((old) => ({
-                            ...old,
-                            [p.partidaId]: { ...value, mandante: e.target.value },
-                          }))
-                        }
-                        className="score-input"
-                        disabled={rodada.status !== "aberta"}
-                        aria-label={`Gols ${p.siglaMandante ?? p.timeMandante}`}
-                      />
-                      <span className="score-divider">×</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={20}
-                        value={value.visitante}
-                        onChange={(e) =>
-                          setScores((old) => ({
-                            ...old,
-                            [p.partidaId]: { ...value, visitante: e.target.value },
-                          }))
-                        }
-                        className="score-input"
-                        disabled={rodada.status !== "aberta"}
-                        aria-label={`Gols ${p.siglaVisitante ?? p.timeVisitante}`}
-                      />
-                      <TeamSide
-                        escudo={p.escudoVisitante}
-                        nome={p.siglaVisitante ?? p.timeVisitante}
-                        invert
-                      />
+                      <div className="grid grid-cols-[1fr_auto_auto_auto_1fr] items-center gap-2 sm:gap-4">
+                        <TeamSide
+                          escudo={p.escudoMandante}
+                          nome={p.siglaMandante ?? p.timeMandante}
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={20}
+                          value={value.mandante}
+                          onChange={(e) =>
+                            setScores((old) => ({
+                              ...old,
+                              [p.partidaId]: { ...value, mandante: e.target.value },
+                            }))
+                          }
+                          className="score-input"
+                          disabled={bloqueado}
+                          aria-label={`Gols ${p.siglaMandante ?? p.timeMandante}`}
+                        />
+                        <span className="score-divider">×</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={20}
+                          value={value.visitante}
+                          onChange={(e) =>
+                            setScores((old) => ({
+                              ...old,
+                              [p.partidaId]: { ...value, visitante: e.target.value },
+                            }))
+                          }
+                          className="score-input"
+                          disabled={bloqueado}
+                          aria-label={`Gols ${p.siglaVisitante ?? p.timeVisitante}`}
+                        />
+                        <TeamSide
+                          escudo={p.escudoVisitante}
+                          nome={p.siglaVisitante ?? p.timeVisitante}
+                          invert
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-400">
+                Todos os jogos desta rodada já começaram ou foram finalizados.
+              </p>
+            )}
+
+            {partidasEncerradas.length > 0 && (
+              <div className="mt-8 border-t border-white/5 pt-6">
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-500">
+                  Jogos encerrados
+                </h3>
+                <div className="space-y-2">
+                  {partidasEncerradas.map((p) => {
+                    const value = scores[p.partidaId] ?? { mandante: "", visitante: "" };
+                    const salvo = palpitePorJogo.get(p.partidaId);
+                    const temPalpite =
+                      salvo != null ||
+                      (value.mandante !== "" && value.visitante !== "");
+                    const temPlacar =
+                      p.placarMandante !== null && p.placarVisitante !== null;
+                    const palpiteMandante = salvo?.mandante ?? value.mandante;
+                    const palpiteVisitante = salvo?.visitante ?? value.visitante;
+                    return (
+                      <div
+                        key={p.partidaId}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/30 px-4 py-3 opacity-80"
+                      >
+                        <span className="text-sm font-medium">
+                          {p.siglaMandante ?? p.timeMandante}{" "}
+                          {temPlacar ? (
+                            <span className="text-chiliz-gold">
+                              {p.placarMandante} × {p.placarVisitante}
+                            </span>
+                          ) : temPalpite ? (
+                            <span className="text-zinc-400">
+                              {palpiteMandante} × {palpiteVisitante}
+                            </span>
+                          ) : (
+                            <span className="text-zinc-600">— × —</span>
+                          )}{" "}
+                          {p.siglaVisitante ?? p.timeVisitante}
+                          {temPalpite && temPlacar && (
+                            <span className="ml-2 text-xs text-zinc-500">
+                              (palpite: {palpiteMandante}×{palpiteVisitante})
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {salvo && p.processada && (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                salvo.pontos > 0
+                                  ? "bg-emerald-500/15 text-emerald-300"
+                                  : "bg-zinc-800 text-zinc-500"
+                              }`}
+                            >
+                              {salvo.pontos > 0
+                                ? `+${salvo.pontos} pts`
+                                : "0 pts"}
+                            </span>
+                          )}
+                          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+                            {p.status === "finalizado" || p.processada
+                              ? "Finalizado"
+                              : "Encerrado"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
@@ -277,13 +452,15 @@ export default function PalpitesPage() {
           <section className="glass-panel card-hover rounded-3xl p-5 sm:p-6">
             <h2 className="mb-1 text-lg font-bold">Resultados</h2>
             <p className="mb-4 text-sm text-zinc-500">Jogos finalizados nesta rodada</p>
-            {jogosProcessados.length === 0 ? (
+            {partidasEncerradas.filter((p) => p.processada).length === 0 ? (
               <p className="text-sm text-zinc-400">
                 Ainda sem jogos finalizados nesta rodada.
               </p>
             ) : (
               <div className="space-y-2">
-                {jogosProcessados.map((j) => (
+                {partidasEncerradas
+                  .filter((p) => p.processada)
+                  .map((j) => (
                   <div
                     key={j.partidaId}
                     className="flex items-center justify-between rounded-xl border border-white/5 bg-black/30 px-4 py-3 transition hover:border-chiliz/20"
@@ -304,16 +481,22 @@ export default function PalpitesPage() {
 
           <section className="glass-panel card-hover rounded-3xl p-5 sm:p-6">
             <h2 className="mb-1 text-lg font-bold">Ranking da rodada</h2>
-            <p className="mb-4 text-sm text-zinc-500">Top 10 pontuadores</p>
+            <p className="mb-4 text-sm text-zinc-500">
+              Top 10 · procure seu nome do Discord
+            </p>
             {ranking.length === 0 ? (
               <p className="text-sm text-zinc-400">Sem pontuação ainda.</p>
             ) : (
               <div className="space-y-2">
-                {ranking.slice(0, 10).map((r, idx) => (
+                {ranking.slice(0, 10).map((r, idx) => {
+                  const souEu = meuDiscordId === r.discord_user_id;
+                  return (
                   <div
                     key={r.discord_user_id}
                     className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
-                      idx === 0
+                      souEu
+                        ? "border-chiliz/50 bg-chiliz/10 ring-1 ring-chiliz/30"
+                        : idx === 0
                         ? "rank-gold"
                         : idx === 1
                           ? "rank-silver"
@@ -327,12 +510,18 @@ export default function PalpitesPage() {
                         #{String(idx + 1).padStart(2, "0")}
                       </span>
                       {r.discord_username ?? r.discord_user_id}
+                      {souEu && (
+                        <span className="ml-2 text-xs font-semibold text-chiliz-gold">
+                          (você)
+                        </span>
+                      )}
                     </span>
                     <span className="font-bold text-chiliz-gold">
                       {r.total_pontos} pts
                     </span>
                   </div>
-                ))}
+                );
+                })}
               </div>
             )}
           </section>
@@ -428,7 +617,7 @@ function Aviso({
   children,
   tone,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   tone: "info" | "sucesso" | "erro";
 }) {
   const cls =

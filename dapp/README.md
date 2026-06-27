@@ -1,4 +1,4 @@
-# Palpiter CHZ - Mini dApp
+# Palpito — Mini dApp
 
 Mini-site Next.js 14 para os usuarios assinarem suas apostas em CHZ na
 Chiliz Chain (Spicy testnet por padrao).
@@ -14,23 +14,33 @@ Chiliz Chain (Spicy testnet por padrao).
 ## Setup
 
 ```powershell
+# Na raiz do projeto (um único .env para bot + site)
+copy .env.example .env
+# edite .env na raiz
+
 cd dapp
 npm install
-copy .env.example .env.local
-# edite .env.local
 npm run dev
 ```
+
+O dApp lê o `.env` da **raiz** automaticamente (`dapp/next.config.js`).
 
 `http://localhost:3000` deve abrir a home.
 
 ## Variaveis de ambiente
 
+Todas ficam no `.env` da raiz. Principais do site:
+
 | Var | O que e |
 |---|---|
 | `NEXT_PUBLIC_APP_URL` | URL publica do dApp (Vercel ou local) |
 | `NEXT_PUBLIC_NETWORK` | `spicy` (testnet) ou `chiliz` (mainnet) |
-| `NEXT_PUBLIC_BOT_API_URL` | URL publica do mini HTTP server do bot |
-| `NEXT_PUBLIC_DISCORD_GUILD_ID` | Servidor padrao para carregar rodada/ranking no site |
+| `BOT_API_URL` | URL do bot (proxy `/bot-api` no dev) |
+| `NEXT_PUBLIC_BOT_API_URL` | URL publica do bot (mensagens de erro) |
+| `NEXT_PUBLIC_DISCORD_GUILD_ID` | Servidor padrao para rodada/ranking |
+| `ADMIN_USERNAME` | Usuario do painel Quiz |
+| `ADMIN_PASSWORD` | Senha do painel Quiz |
+| `AUTH_SECRET` | Assinatura dos cookies de sessao admin |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | id em cloud.walletconnect.com |
 
 ## Telas
@@ -65,9 +75,8 @@ vercel --prod
 ```
 
 Lembre de:
-1. Configurar todas as env vars no painel da Vercel
-2. Atualizar `DAPP_BASE_URL` no `.env` do bot principal com a URL final
-3. Liberar CORS do bot HTTP para esta origem
+1. Configurar as env vars do dApp no painel da Vercel (mesmas do `.env` raiz, seção dApp)
+2. Atualizar `DAPP_BASE_URL` e `BOT_API_CORS_ORIGIN` no `.env` do bot com a URL final
 
 ## Avisos
 

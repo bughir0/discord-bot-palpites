@@ -1,11 +1,10 @@
 const path = require("path");
+const { config: loadEnv } = require("dotenv");
+
+// Um único .env na raiz do monorepo (bot + dApp)
+loadEnv({ path: path.join(__dirname, "..", ".env") });
 
 const optionalStub = path.join(__dirname, "lib/stubs/empty.js");
-
-const botApiUrl =
-  process.env.BOT_API_URL ??
-  process.env.NEXT_PUBLIC_BOT_API_URL ??
-  "http://localhost:3001";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -17,13 +16,15 @@ const nextConfig = {
         destination: "/bolao/:path*",
         permanent: false,
       },
-    ];
-  },
-  async rewrites() {
-    return [
       {
-        source: "/bot-api/:path*",
-        destination: `${botApiUrl}/:path*`,
+        source: "/quiz-panel",
+        destination: "/quiz",
+        permanent: false,
+      },
+      {
+        source: "/quiz-panel/:path*",
+        destination: "/quiz",
+        permanent: false,
       },
     ];
   },

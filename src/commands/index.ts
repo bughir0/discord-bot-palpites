@@ -68,7 +68,9 @@ async function denyUnlessAdmin(interaction: CommandInteraction): Promise<boolean
 }
 
 function partidasAbertas(partidas: PartidaRodada[]): PartidaRodada[] {
-  return partidas.filter((p) => partidaAbertaParaPalpite(p.status, p.data_realizacao_iso));
+  return partidas.filter((p) =>
+    partidaAbertaParaPalpite(p.status, p.data_realizacao_iso, p.processada),
+  );
 }
 
 /** Jogos que o membro ainda pode palpitar (abertos e sem palpite registrado) */
@@ -1060,7 +1062,9 @@ export async function handleSelectMenu(interaction: StringSelectMenuInteraction)
     return;
   }
 
-  if (!partidaAbertaParaPalpite(partida.status, partida.data_realizacao_iso)) {
+  if (
+    !partidaAbertaParaPalpite(partida.status, partida.data_realizacao_iso, partida.processada)
+  ) {
     await interaction.reply({
       embeds: [buildErrorEmbed('Palpites encerrados para este jogo.')],
       flags: MessageFlags.Ephemeral,

@@ -62,10 +62,18 @@ export function partidaComResultadoDisponivel(
   );
 }
 
-export function partidaAbertaParaPalpite(status: string, dataIso: string | null): boolean {
+export function partidaAbertaParaPalpite(
+  status: string,
+  dataIso: string | null,
+  processada?: boolean | number,
+): boolean {
+  if (processada) return false;
   if (status !== 'agendado') return false;
-  if (!dataIso) return true;
-  return new Date(dataIso).getTime() > Date.now();
+  if (dataIso) {
+    const kickoff = new Date(dataIso).getTime();
+    if (!Number.isNaN(kickoff) && kickoff <= Date.now()) return false;
+  }
+  return true;
 }
 
 /** Só consulta a API depois do horário do jogo + ~105 min (evita gastar cota à toa) */

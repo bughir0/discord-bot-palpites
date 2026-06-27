@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import type { FastifyInstance } from 'fastify';
 import { env } from '../../config';
 import { getDb } from '../../db/database';
+import { partidaAbertaParaPalpite } from '../../services/pontuacao';
 import { rodadaService } from '../../services/rodadaService';
 import { walletLinkService } from '../../services/onchain/walletLinkService';
 import type { Rodada } from '../../types';
@@ -76,6 +77,11 @@ export function registerSiteRoutes(app: FastifyInstance): void {
         placarMandante: p.placar_mandante,
         placarVisitante: p.placar_visitante,
         processada: p.processada === 1,
+        abertaParaPalpite: partidaAbertaParaPalpite(
+          p.status,
+          p.data_realizacao_iso,
+          p.processada,
+        ),
       })),
       ranking: ranking.slice(0, 20),
     };
@@ -113,11 +119,33 @@ export function registerSiteRoutes(app: FastifyInstance): void {
         pontos: p.pontos,
       }));
 
+    const ranking = rodadaService.getRankingRodada(rodadaId);
+    const posicaoRanking = ranking.findIndex((r) => r.discord_user_id === link.discord_user_id);
+    const entradaRanking = posicaoRanking >= 0 ? ranking[posicaoRanking] : null;
+
     return {
       rodadaId,
       discordUserId: link.discord_user_id,
+      discordUsername: entradaRanking?.discord_username ?? resolverNomeUsuario(link.discord_user_id),
       wallet: link.wallet_address,
       palpites,
+      resumo: entradaRanking
+        ? {
+            posicao: posicaoRanking + 1,
+            totalParticipantes: ranking.length,
+            totalPontos: entradaRanking.total_pontos,
+            acertosExatos: entradaRanking.acertos_exatos,
+            acertosVencedor: entradaRanking.acertos_vencedor,
+            totalPalpites: entradaRanking.total_palpites,
+          }
+        : {
+            posicao: null,
+            totalParticipantes: ranking.length,
+            totalPontos: palpites.reduce((s, p) => s + p.pontos, 0),
+            acertosExatos: 0,
+            acertosVencedor: 0,
+            totalPalpites: palpites.length,
+          },
     };
   });
 
@@ -176,6 +204,23 @@ export function registerSiteRoutes(app: FastifyInstance): void {
         visitante > 20
       ) {
         return reply.code(400).send({ error: 'palpite_invalido' });
+      }
+
+      const partida = rodadaService.getPartida(rodadaId, partidaId);
+      if (!partida) {
+        return reply.code(404).send({ error: 'partida_nao_encontrada' });
+      }
+      if (
+        !partidaAbertaParaPalpite(
+          partida.status,
+          partida.data_realizacao_iso,
+          partida.processada,
+        )
+      ) {
+        return reply.code(409).send({
+          error: 'palpite_encerrado',
+          detalhe: `Palpites encerrados para ${partida.time_mandante} × ${partida.time_visitante}.`,
+        });
       }
 
       rodadaService.salvarPalpite(

@@ -191,7 +191,7 @@ function updateQuizStatus(quiz: Quiz, q: QuizQuestion, qIndex: number, active: A
     totalQuestions: quiz.perguntas.length,
     participantes: active.participants.size,
     startTime: startedAt,
-    progresso: Math.round(((qIndex + 1) / quiz.perguntas.length) * 100),
+    progresso: (qIndex + 1) / quiz.perguntas.length,
     currentQuestion: {
       numero: qIndex + 1,
       total: quiz.perguntas.length,

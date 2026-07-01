@@ -6,6 +6,7 @@ import {
   DEPRECATED_OPENROUTER_MODELS,
   FREE_AI_PROVIDER_HINTS,
   generateQuestionsWithAI,
+  SUGGESTED_MODELS,
   type AiLanguage,
   type AiProvider,
 } from "@/lib/quiz/geminiQuiz";
@@ -371,14 +372,15 @@ export function QuizEditor({
       {tab === "ia" && (
         <div className="tab-panel" key="ia">
           <p className="help-block warn">
-            A chave fica salva no seu navegador (localStorage). Você pode trocar de provedor e idioma da IA.
+            A chave fica salva no seu navegador (localStorage).{" "}
+            <strong>Revise cada pergunta</strong> antes de publicar — IAs podem errar fatos em temas de nicho (ex.: cinema BR).
           </p>
           <div className="form-grid two tight">
             <label className="field">
               <span>Provedor de IA</span>
               <select value={aiProvider} onChange={(e) => handleProviderChange(e.target.value as AiProvider)}>
-                <option value="groq">Groq (gratuito — recomendado)</option>
-                <option value="gemini">Google Gemini (gratuito)</option>
+                <option value="gemini">Google Gemini (gratuito — recomendado)</option>
+                <option value="groq">Groq (gratuito — rápido)</option>
                 <option value="openrouter">OpenRouter (gratuito instável)</option>
                 <option value="openai">OpenAI API (pago)</option>
               </select>
@@ -425,8 +427,7 @@ export function QuizEditor({
           <p className="help-block">{FREE_AI_PROVIDER_HINTS[aiProvider]}</p>
           <label className="field">
             <span>Modelo</span>
-            <input
-              type="text"
+            <select
               value={aiModel}
               onChange={(e) => {
                 setAiModel(e.target.value)
@@ -434,9 +435,21 @@ export function QuizEditor({
                   window.localStorage.setItem(LS_AI_MODEL, e.target.value)
                 }
               }}
-              placeholder="Nome do modelo"
-            />
+            >
+              {!SUGGESTED_MODELS[aiProvider].some((m) => m.id === aiModel) ? (
+                <option value={aiModel}>{aiModel} (atual)</option>
+              ) : null}
+              {SUGGESTED_MODELS[aiProvider].map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
           </label>
+          <p className="help-block">
+            Modelo avançado: edite manualmente em localStorage ou use{" "}
+            <code>gemini-2.5-pro</code> no Gemini para mais precisão.
+          </p>
           <p className="help-block">
             Links rápidos:{" "}
             <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">

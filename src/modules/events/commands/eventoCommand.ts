@@ -346,23 +346,31 @@ async function handleFinalizar(
       ],
     });
 
-    await ctx.logger.log({
-      guildId: interaction.guild.id,
-      actorId: interaction.user.id,
-      action: "EVENT_END",
-      targetType: "event",
-      targetId: eventId,
-      payload: {
-        uniqueParticipants: stats.snapshot.unique_participants,
-        totalMessages: stats.snapshot.total_messages,
-      },
-    });
+    try {
+      await ctx.logger.log({
+        guildId: interaction.guild.id,
+        actorId: interaction.user.id,
+        action: "EVENT_END",
+        targetType: "event",
+        targetId: eventId,
+        payload: {
+          uniqueParticipants: stats.snapshot.unique_participants,
+          totalMessages: stats.snapshot.total_messages,
+        },
+      });
+    } catch (logErr) {
+      console.error("[evento] log administrativo:", logErr);
+    }
 
-    const participantIds = new Set<string>();
-    for (const u of stats.buckets.buttonOnly) participantIds.add(u);
-    for (const u of stats.buckets.messageOnly) participantIds.add(u);
-    for (const u of stats.buckets.both) participantIds.add(u);
-    rewardEventParticipants([...participantIds], eventId);
+    try {
+      const participantIds = new Set<string>();
+      for (const u of stats.buckets.buttonOnly) participantIds.add(u);
+      for (const u of stats.buckets.messageOnly) participantIds.add(u);
+      for (const u of stats.buckets.both) participantIds.add(u);
+      rewardEventParticipants([...participantIds], eventId);
+    } catch (pointsErr) {
+      console.error("[evento] pontos de participação:", pointsErr);
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao finalizar.";
     await interaction.editReply({

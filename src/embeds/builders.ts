@@ -8,7 +8,7 @@ import {
 } from 'discord.js';
 import { ethers } from 'ethers';
 import { env } from '../config';
-import { LEAGUE, leagueBrandingForRodada } from './theme';
+import { LEAGUE, leagueBrandingForRodada, tituloRodada } from './theme';
 import type { GuildConfig, PartidaRodada, Palpite, RankingEntry, ResultadoPalpite, Rodada } from '../types';
 import {
   accentEmbedColor,
@@ -186,7 +186,7 @@ export function buildRodadaHeaderEmbed(
   return new EmbedBuilder()
     .setColor(defaultEmbedColor(config.cor_embed))
     .setAuthor({
-      name: `${league.emoji} PALPITES — ${rodada.numero_rodada}ª RODADA`,
+      name: `${league.emoji} PALPITES — ${tituloRodada(rodada).toUpperCase()}`,
       iconURL: league.logo,
     })
     .setDescription(descriptions[0]);
@@ -223,10 +223,10 @@ export function buildRodadaEmbeds(
       .setAuthor({
         name:
           index === 0
-            ? `${league.emoji} PALPITES — ${rodada.numero_rodada}ª RODADA`
+            ? `${league.emoji} PALPITES — ${tituloRodada(rodada).toUpperCase()}`
             : totalPartes > 1
-              ? `${league.emoji} ${rodada.numero_rodada}ª RODADA · ${index + 1}/${totalPartes}`
-              : `${league.emoji} ${rodada.numero_rodada}ª RODADA — jogos`,
+              ? `${league.emoji} ${tituloRodada(rodada).toUpperCase()} · ${index + 1}/${totalPartes}`
+              : `${league.emoji} ${tituloRodada(rodada).toUpperCase()} — jogos`,
         iconURL: league.logo,
       })
       .setDescription(description);
@@ -294,7 +294,7 @@ export function buildMensagemAberturaRodada(
         `_Use o botão **Palpitar grátis** ou o comando \`/palpite\`._\n\n`;
 
   return (
-    `🏆 **${rodada.numero_rodada}ª RODADA ABERTA!**\n\n` +
+    `🏆 **${rodada.modalidade === 'copa' ? tituloRodada(rodada).toUpperCase() : `${rodada.numero_rodada}ª RODADA`} ABERTA!**\n\n` +
     `⚽ **${totalJogos} partidas** liberadas para palpite!\n` +
     `🎯 Placar exato · **${config.pontos_exato} pts** · ✅ Vencedor/empate · **${config.pontos_vencedor} pt**\n\n` +
     linhaResultados +

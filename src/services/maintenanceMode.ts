@@ -6,6 +6,7 @@ import {
   type Interaction,
 } from 'discord.js';
 import { getDb } from '../db/database';
+import { log } from '../utils/logger';
 
 const META_KEY = 'maintenance_mode';
 /** Único usuário autorizado a usar /modo-manutencao */
@@ -34,12 +35,18 @@ export function isMaintenanceActive(): boolean {
 
 export function setMaintenanceActive(active: boolean): void {
   ensureMetaTable();
+  const wasActive = isMaintenanceActive();
   getDb()
     .prepare(
       `INSERT INTO bot_meta (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     )
     .run(META_KEY, active ? '1' : '0');
+  if (active && !wasActive) {
+    log.warn('Modo manutenção ATIVADO — comandos, botões e automações pausados.');
+  } else if (!active && wasActive) {
+    log.success('Modo manutenção DESATIVADO — bot voltou ao normal.');
+  }
 }
 
 export function buildMaintenanceEmbed(): EmbedBuilder {

@@ -116,13 +116,13 @@ export async function startDapp(): Promise<void> {
 
   dappProcess.stdout?.on('data', (chunk: Buffer) => {
     for (const line of chunk.toString().split(/\r?\n/).filter(Boolean)) {
-      log.info(`[dapp] ${line}`);
+      log.debug(`[dapp] ${line}`);
     }
   });
 
   dappProcess.stderr?.on('data', (chunk: Buffer) => {
     for (const line of chunk.toString().split(/\r?\n/).filter(Boolean)) {
-      log.warn(`[dapp] ${line}`);
+      log.debug(`[dapp:err] ${line}`);
     }
   });
 

@@ -4,6 +4,7 @@ import {
   ApiFutebolError,
   buscarRodada,
   buscarRodadaAtual,
+  buscarRodadaCopa,
   isApiQuotaExhausted,
 } from './apiFutebol';
 import {
@@ -16,6 +17,7 @@ import {
 import { rewardPalpitePoints } from '../modules/points/rewards';
 import type {
   Palpite,
+  PartidaApi,
   PartidaRodada,
   RankingEntry,
   ResultadoPalpite,
@@ -28,6 +30,38 @@ export type DetectarRodadaResult =
   | { tipo: 'ja_em_andamento'; numero: number; status: 'aberta' | 'fechada' }
   | { tipo: 'aguardar'; tentou: number; ultimaFinalizada: number | null }
   | { tipo: 'erro'; motivo: string };
+
+function dadosTimeApi(time: PartidaApi['time_mandante'] | undefined) {
+  return {
+    nome: time?.nome_popular ?? 'A definir',
+    sigla: time?.sigla ?? '—',
+    escudo: time?.escudo ?? null,
+  };
+}
+
+function inserirPartidaApi(
+  stmt: { run: (...args: unknown[]) => unknown },
+  rodadaId: number,
+  partida: PartidaApi,
+): void {
+  const mandante = dadosTimeApi(partida.time_mandante);
+  const visitante = dadosTimeApi(partida.time_visitante);
+  stmt.run(
+    rodadaId,
+    partida.partida_id,
+    mandante.nome,
+    visitante.nome,
+    mandante.sigla,
+    visitante.sigla,
+    mandante.escudo,
+    visitante.escudo,
+    partida.estadio?.nome_popular ?? null,
+    partida.data_realizacao,
+    partida.hora_realizacao,
+    partida.data_realizacao_iso,
+    partida.status,
+  );
+}
 
 export class RodadaService {
   /** Rodada aberta do Brasileirão/free (ignora Copa — pode coexistir). */
@@ -61,10 +95,39 @@ export class RodadaService {
       .prepare(
         `SELECT * FROM rodadas
          WHERE guild_id = ? AND modalidade = 'copa' AND status = 'aberta'
-         ORDER BY id DESC LIMIT 1`,
+         ORDER BY numero_rodada ASC LIMIT 1`,
       )
       .get(guildId) as Rodada | undefined;
     return row ?? null;
+  }
+
+  getRodadaCopaPorNumero(guildId: string, numeroFase: number, campeonatoId?: number): Rodada | null {
+    const row =
+      campeonatoId != null
+        ? (getDb()
+            .prepare(
+              `SELECT * FROM rodadas
+               WHERE guild_id = ? AND campeonato_id = ? AND modalidade = 'copa' AND numero_rodada = ?`,
+            )
+            .get(guildId, campeonatoId, numeroFase) as Rodada | undefined)
+        : (getDb()
+            .prepare(
+              `SELECT * FROM rodadas
+               WHERE guild_id = ? AND modalidade = 'copa' AND numero_rodada = ?
+               ORDER BY id DESC LIMIT 1`,
+            )
+            .get(guildId, numeroFase) as Rodada | undefined);
+    return row ?? null;
+  }
+
+  listarRodadasCopa(guildId: string, campeonatoId: number): Rodada[] {
+    return getDb()
+      .prepare(
+        `SELECT * FROM rodadas
+         WHERE guild_id = ? AND campeonato_id = ? AND modalidade = 'copa'
+         ORDER BY numero_rodada ASC`,
+      )
+      .all(guildId, campeonatoId) as Rodada[];
   }
 
   getRodadaById(id: number): Rodada | null {
@@ -250,21 +313,7 @@ export class RodadaService {
       const rodadaId = Number(result.lastInsertRowid);
 
       for (const partida of partidasAgendadas) {
-        insertPartida.run(
-          rodadaId,
-          partida.partida_id,
-          partida.time_mandante.nome_popular,
-          partida.time_visitante.nome_popular,
-          partida.time_mandante.sigla,
-          partida.time_visitante.sigla,
-          partida.time_mandante.escudo,
-          partida.time_visitante.escudo,
-          partida.estadio?.nome_popular ?? null,
-          partida.data_realizacao,
-          partida.hora_realizacao,
-          partida.data_realizacao_iso,
-          partida.status,
-        );
+        inserirPartidaApi(insertPartida, rodadaId, partida);
       }
 
       return rodadaId;
@@ -276,6 +325,92 @@ export class RodadaService {
     return { rodada, partidas };
   }
 
+  /** Abre uma fase da Copa sem bloquear outras fases já abertas no mesmo campeonato. */
+  async abrirRodadaCopa(
+    guildId: string,
+    channelId: string,
+    numeroFase: number,
+    campeonatoId: number,
+    rodadaApiCache?: RodadaApi,
+  ): Promise<{ rodada: Rodada; partidas: PartidaRodada[]; nomeFase: string }> {
+    const db = getDb();
+    const existente = db
+      .prepare(`SELECT * FROM rodadas WHERE guild_id = ? AND campeonato_id = ? AND numero_rodada = ?`)
+      .get(guildId, campeonatoId, numeroFase) as Rodada | undefined;
+    if (existente) {
+      throw new Error(
+        `A fase ${numeroFase} (${existente.modalidade === 'copa' ? 'Copa' : 'rodada'}) já foi registrada neste servidor.`,
+      );
+    }
+
+    const rodadaApi = rodadaApiCache ?? (await buscarRodadaCopa(campeonatoId, numeroFase));
+    const partidasAgendadas = rodadaApi.partidas.filter((p) =>
+      partidaAbertaParaPalpite(p.status, p.data_realizacao_iso),
+    );
+    if (partidasAgendadas.length === 0) {
+      throw new Error(`Nenhum jogo agendado encontrado na fase "${rodadaApi.nome}".`);
+    }
+
+    const insertRodada = db.prepare(`
+      INSERT INTO rodadas (guild_id, campeonato_id, numero_rodada, channel_id, status, aberta_em, modalidade)
+      VALUES (?, ?, ?, ?, 'aberta', ?, 'copa')
+    `);
+    const insertPartida = db.prepare(`
+      INSERT INTO partidas_rodada (
+        rodada_id, partida_id, time_mandante, time_visitante,
+        sigla_mandante, sigla_visitante, escudo_mandante, escudo_visitante,
+        estadio, data_realizacao, hora_realizacao,
+        data_realizacao_iso, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const now = new Date().toISOString();
+
+    const rodadaId = db.transaction(() => {
+      const result = insertRodada.run(guildId, campeonatoId, numeroFase, channelId, now);
+      const id = Number(result.lastInsertRowid);
+      for (const partida of partidasAgendadas) {
+        inserirPartidaApi(insertPartida, id, partida);
+      }
+      return id;
+    })();
+
+    const rodada = this.getRodadaById(rodadaId)!;
+    const partidas = this.getPartidasRodada(rodadaId);
+    return { rodada, partidas, nomeFase: rodadaApi.nome };
+  }
+
+  /** Adiciona jogos agendados que ainda não estão no banco (Copa costuma liberar partidas aos poucos). */
+  async sincronizarPartidasApi(rodadaId: number): Promise<{ adicionadas: number }> {
+    const rodada = this.getRodadaById(rodadaId);
+    if (!rodada || rodada.status !== 'aberta') return { adicionadas: 0 };
+    if (isApiQuotaExhausted()) return { adicionadas: 0 };
+
+    const rodadaApi =
+      rodada.modalidade === 'copa'
+        ? await buscarRodadaCopa(rodada.campeonato_id, rodada.numero_rodada)
+        : await buscarRodada(rodada.campeonato_id, rodada.numero_rodada);
+    const agendados = rodadaApi.partidas.filter((p) =>
+      partidaAbertaParaPalpite(p.status, p.data_realizacao_iso),
+    );
+    const existentes = new Set(this.getPartidasRodada(rodadaId).map((p) => p.partida_id));
+    const db = getDb();
+    const insertPartida = db.prepare(`
+      INSERT INTO partidas_rodada (
+        rodada_id, partida_id, time_mandante, time_visitante,
+        sigla_mandante, sigla_visitante, escudo_mandante, escudo_visitante,
+        estadio, data_realizacao, hora_realizacao,
+        data_realizacao_iso, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    let adicionadas = 0;
+    for (const partida of agendados) {
+      if (existentes.has(partida.partida_id)) continue;
+      inserirPartidaApi(insertPartida, rodadaId, partida);
+      adicionadas++;
+    }
+    return { adicionadas };
+  }
+
   fecharRodada(guildId: string): Rodada {
     const rodada = this.getRodadaAberta(guildId);
     if (!rodada) throw new Error('Nenhuma rodada aberta no momento.');
@@ -285,6 +420,79 @@ export class RodadaService {
       .run(new Date().toISOString(), rodada.id);
 
     return this.getRodadaById(rodada.id)!;
+  }
+
+  /**
+   * Reabre uma rodada do Brasileirão já registrada (ex.: fechada por engano).
+   * `forcar` só para rodadas finalizadas — zera placares/processamento.
+   */
+  async reabrirRodada(
+    guildId: string,
+    numeroRodada: number,
+    campeonatoId: number,
+    options?: { forcar?: boolean },
+  ): Promise<{
+    rodada: Rodada;
+    partidas: PartidaRodada[];
+    jaEstavaAberta: boolean;
+    resetResultados: boolean;
+  }> {
+    const forcar = options?.forcar ?? false;
+    const rodada = this.getRodadaByNumero(guildId, numeroRodada, campeonatoId);
+    if (!rodada) {
+      throw new Error(`Rodada ${numeroRodada} não encontrada neste servidor.`);
+    }
+    if (rodada.modalidade === 'copa') {
+      throw new Error('Esta rodada é da Copa. Use os comandos `/abrir-rodada-copa` ou `/reenviar-rodada-copa`.');
+    }
+    if (rodada.status === 'aberta') {
+      return {
+        rodada,
+        partidas: this.getPartidasRodada(rodada.id),
+        jaEstavaAberta: true,
+        resetResultados: false,
+      };
+    }
+    if (rodada.status === 'finalizada' && !forcar) {
+      throw new Error(
+        `A rodada ${numeroRodada} já foi finalizada (resultados processados). ` +
+          `Use **forcar:true** apenas se precisar zerar resultados e reabrir — isso apaga pontuação da rodada.`,
+      );
+    }
+    const outraAberta = this.getRodadaAbertaPorCampeonato(guildId, campeonatoId);
+    if (outraAberta && outraAberta.id !== rodada.id) {
+      throw new Error(
+        `A rodada ${outraAberta.numero_rodada} ainda está aberta. Feche-a antes de reabrir a ${numeroRodada}.`,
+      );
+    }
+
+    const db = getDb();
+    const eraFinalizada = rodada.status === 'finalizada';
+    db.transaction(() => {
+      if (eraFinalizada && forcar) {
+        db.prepare(`
+            UPDATE partidas_rodada
+            SET processada = 0, placar_mandante = NULL, placar_visitante = NULL, status = 'agendado'
+            WHERE rodada_id = ?
+          `).run(rodada.id);
+        db.prepare(`UPDATE palpites SET pontos = 0 WHERE rodada_id = ?`).run(rodada.id);
+      }
+      db.prepare(`
+        UPDATE rodadas
+        SET status = 'aberta', fechada_em = NULL, resultados_publicados = 0
+        WHERE id = ?
+      `).run(rodada.id);
+    })();
+
+    await this.sincronizarPartidasApi(rodada.id);
+    const atualizada = this.getRodadaById(rodada.id)!;
+    const partidas = this.getPartidasRodada(rodada.id);
+    return {
+      rodada: atualizada,
+      partidas,
+      jaEstavaAberta: false,
+      resetResultados: eraFinalizada && forcar,
+    };
   }
 
   setPublicacaoRodada(rodadaId: number, channelId: string, messageId: string): void {
@@ -524,7 +732,10 @@ export class RodadaService {
       return { resultados: [], partidasFinalizadas: 0 };
     }
 
-    const rodadaApi = await buscarRodada(rodada.campeonato_id, rodada.numero_rodada);
+    const rodadaApi =
+      rodada.modalidade === 'copa'
+        ? await buscarRodadaCopa(rodada.campeonato_id, rodada.numero_rodada)
+        : await buscarRodada(rodada.campeonato_id, rodada.numero_rodada);
     const apiPorId = new Map(rodadaApi.partidas.map((p) => [p.partida_id, p]));
 
     const db = getDb();

@@ -126,6 +126,7 @@ export interface RodadaApi {
   rodada: number;
   status: string;
   partidas: PartidaApi[];
+  faseId?: number;
 }
 
 /** Resposta da API Futebol para copas por fase (ex.: Copa 2026). */
@@ -139,6 +140,19 @@ export interface RodadaGrupoBlocoApi {
 
 export type RodadaGruposApi = Record<string, RodadaGrupoBlocoApi[]>;
 
+export interface FaseMetaApi {
+  fase_id: number;
+  nome: string;
+  slug: string;
+  status?: string;
+}
+
+export interface FaseDetailApi extends FaseMetaApi {
+  grupos?: Record<string, { partidas?: Record<string, PartidaApi[]> }>;
+  chaves?: Array<{ partida_ida?: PartidaApi; partida_volta?: PartidaApi | PartidaApi[] }>;
+  rodadas?: RodadaApi[];
+}
+
 export interface CampeonatoApi {
   campeonato_id: number;
   nome: string;
@@ -148,6 +162,10 @@ export interface CampeonatoApi {
     nome: string;
     rodada: number;
     status: string;
+  } | null;
+  fase_atual?: {
+    fase_id: number;
+    nome: string;
   } | null;
 }
 

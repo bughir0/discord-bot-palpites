@@ -25,7 +25,8 @@ import { configService } from '../services/configService';
 import { formatMotivoPendencia, partidaAbertaParaPalpite, partidaJaIniciou } from '../services/pontuacao';
 import { publicarResultadosRodada } from '../services/publicarResultados';
 import { rodadaService } from '../services/rodadaService';
-import { publicarEmbedRodada } from '../services/publicarRodada';
+import { publicarEmbedRodada, garantirEmbedRodadaPublicado, sincronizarBotoesRodada } from '../services/publicarRodada';
+import { log } from '../utils/logger';
 import {
   buildConfigEmbed,
   buildErrorEmbed,
@@ -280,6 +281,98 @@ export const fecharRodada: BotCommand = {
           buildSuccessEmbed(
             '🔒 Rodada fechada',
             `A rodada **${rodada.numero_rodada}** não aceita mais palpites.`,
+            config.cor_embed,
+          ),
+        ],
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      await interaction.editReply({ embeds: [buildErrorEmbed(message)] });
+    }
+  },
+};
+
+export const reabrirRodada: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName('reabrir-rodada')
+    .setDescription('Reabre uma rodada do Brasileirão fechada por engano')
+    .addIntegerOption((opt) =>
+      opt
+        .setName('rodada')
+        .setDescription('Número da rodada a reabrir (ex.: 19)')
+        .setRequired(true)
+        .setMinValue(1)
+        .setMaxValue(38),
+    )
+    .addBooleanOption((opt) =>
+      opt.setName('republicar').setDescription('Republicar embed no canal de palpites (padrão: sim)'),
+    )
+    .addBooleanOption((opt) =>
+      opt.setName('forcar').setDescription('Rodada já finalizada: zera resultados e reabre (cuidado)'),
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  async execute(interaction) {
+    if (!interaction.guildId || !interaction.channelId) return;
+    if (!(await denyUnlessAdmin(interaction))) return;
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      const config = configService.getOrCreate(interaction.guildId);
+      const numeroRodada = interaction.options.getInteger('rodada', true);
+      const republicar = interaction.options.getBoolean('republicar') ?? true;
+      const forcar = interaction.options.getBoolean('forcar') ?? false;
+      const canalId = config.canal_palpites_id ?? interaction.channelId;
+
+      const resultado = await rodadaService.reabrirRodada(
+        interaction.guildId,
+        numeroRodada,
+        config.campeonato_id,
+        { forcar },
+      );
+      const { rodada, partidas, jaEstavaAberta, resetResultados } = resultado;
+
+      let embedRepublicado = false;
+      if (republicar) {
+        const pub = await garantirEmbedRodadaPublicado(
+          interaction.client,
+          rodada,
+          partidas,
+          config,
+          canalId,
+        );
+        embedRepublicado = pub.publicado;
+      } else {
+        await sincronizarBotoesRodada(interaction.client, rodada);
+      }
+
+      const linhas = [
+        jaEstavaAberta
+          ? `A **${numeroRodada}ª rodada** já estava aberta.`
+          : `A **${numeroRodada}ª rodada** foi reaberta para palpites.`,
+        `**${partidas.length}** jogos cadastrados.`,
+      ];
+      if (resetResultados) {
+        linhas.push('⚠️ Resultados e pontuação da rodada foram **zerados** (`forcar:true`).');
+      }
+      if (republicar) {
+        linhas.push(
+          embedRepublicado
+            ? `Embed publicado em <#${canalId}>.`
+            : `Embed já existia em <#${canalId}> — botões atualizados.`,
+        );
+      }
+      if (!jaEstavaAberta) {
+        log.info(
+          `Rodada ${numeroRodada} reaberta por ${interaction.user.tag} (guild ${interaction.guildId})${resetResultados ? ' [forcar]' : ''}`,
+        );
+      }
+
+      await interaction.editReply({
+        embeds: [
+          buildSuccessEmbed(
+            jaEstavaAberta ? 'ℹ️ Rodada já aberta' : '✅ Rodada reaberta!',
+            linhas.join('\n'),
             config.cor_embed,
           ),
         ],
@@ -1182,6 +1275,7 @@ export const commands: BotCommand[] = [
   abrirRodada,
   reenviarRodada,
   fecharRodada,
+  reabrirRodada,
   palpite,
   meusPalpites,
   ranking,

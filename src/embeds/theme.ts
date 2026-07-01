@@ -12,6 +12,7 @@ export type LeagueBranding = {
   label: string;
   logo: string;
   emoji: string;
+  fases?: string[];
 };
 
 export const LEAGUE: LeagueBranding = {
@@ -28,6 +29,15 @@ export const COPA: LeagueBranding = {
   label: 'Copa do Mundo 2026 · Bolão CHZ',
   logo: 'https://cdn.api-futebol.com.br/campeonatos/escudos/copa-do-mundo.png',
   emoji: '🌍',
+  fases: [
+    'Fase de Grupos',
+    'Segunda Fase',
+    'Oitavas de Final',
+    'Quartas de Final',
+    'Semi Final',
+    'Disputa 3o lugar',
+    'Final',
+  ],
 };
 
 export function leagueBranding(modalidade?: Modalidade | null): LeagueBranding {
@@ -36,4 +46,16 @@ export function leagueBranding(modalidade?: Modalidade | null): LeagueBranding {
 
 export function leagueBrandingForRodada(rodada?: Rodada | null): LeagueBranding {
   return leagueBranding(rodada?.modalidade);
+}
+
+export function labelFaseCopa(numeroFase: number): string {
+  const idx = numeroFase - 1;
+  return COPA.fases?.[idx] ?? `Fase ${numeroFase}`;
+}
+
+export function tituloRodada(rodada?: Pick<Rodada, 'modalidade' | 'numero_rodada'> | null): string {
+  if (rodada?.modalidade === 'copa') {
+    return labelFaseCopa(rodada.numero_rodada);
+  }
+  return `${rodada?.numero_rodada ?? '?'}ª RODADA`;
 }

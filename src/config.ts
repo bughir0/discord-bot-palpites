@@ -56,6 +56,15 @@ export const env = {
   /** Canal de logs administrativos (eventos, pontos) */
   coLogChannelId: process.env.CO_LOG_CHANNEL_ID ?? null,
 
+  /** Nível mínimo de log (debug | info | warn | error) */
+  logLevel: process.env.LOG_LEVEL ?? 'info',
+  /** Webhook Discord para logs importantes (fallback quando o terminal da Square Cloud falha) */
+  logWebhookUrl: process.env.LOG_WEBHOOK_URL ?? null,
+  /** Nível mínimo enviado ao webhook quando LOG_WEBHOOK_MIRROR_CONSOLE=false */
+  logWebhookMinLevel: process.env.LOG_WEBHOOK_MIN_LEVEL ?? 'warn',
+  /** Espelha no Discord tudo que aparece no terminal (padrão: true) */
+  logWebhookMirrorConsole: process.env.LOG_WEBHOOK_MIRROR_CONSOLE !== 'false',
+
   /** Recompensas automáticas (pontos da comunidade) */
   pointsEnabled: process.env.POINTS_REWARDS_ENABLED !== 'false',
   pointsEventParticipation: Number(process.env.POINTS_EVENT_PARTICIPATION ?? '5'),

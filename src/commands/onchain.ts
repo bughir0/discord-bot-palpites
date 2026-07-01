@@ -28,12 +28,15 @@ import { walletLinkService } from '../services/onchain/walletLinkService';
 import { explorerAddrUrl } from '../blockchain/chiliz';
 import { buildErrorEmbed, buildSuccessEmbed, buildPalpiteConfirmEmbed, buildPartidaSelect } from '../embeds/builders';
 import { bolaoChzDraftStore } from '../services/onchain/bolaoChzDraftStore';
-import { buscarRodada, buscarRodadaAtual } from '../services/apiFutebol';
+import { buscarRodadaCopa, listarFasesCopaDisponiveis } from '../services/apiFutebol';
 import { partidaAbertaParaPalpite } from '../services/pontuacao';
-import { publicarEmbedRodada, sincronizarBotoesRodada } from '../services/publicarRodada';
+import {
+  publicarEmbedRodada,
+  garantirEmbedRodadaPublicado,
+} from '../services/publicarRodada';
 import type { BotCommand } from '../bot/types';
 import { getDb } from '../db/database';
-import type { Rodada, PartidaRodada } from '../types';
+import type { GuildConfig, Rodada, PartidaRodada, RodadaApi } from '../types';
 
 function ensureOnchainRead(interaction: CommandInteraction): boolean {
   if (!onchainEnabled) {
@@ -475,6 +478,13 @@ export const reenviarRodadaCopaCmd: BotCommand = {
     .setName('reenviar-rodada-copa')
     .setDescription('Republica o embed da rodada Copa aberta (ex.: mensagem apagada ou embed desatualizado)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addIntegerOption((o) =>
+      o
+        .setName('rodada')
+        .setDescription('Fase da Copa (1=Grupos, 2=Segunda Fase…). Vazio = todas abertas')
+        .setMinValue(1)
+        .setMaxValue(7),
+    )
     .addChannelOption((o) =>
       o
         .setName('canal')
@@ -495,21 +505,57 @@ export const reenviarRodadaCopaCmd: BotCommand = {
 
     try {
       const config = configService.getOrCreate(interaction.guildId);
+      const campeonatoId = env.copaCampeonatoId ?? config.campeonato_id;
       const canal = interaction.options.getChannel('canal') ?? null;
       const canalId =
         (canal && 'id' in canal ? canal.id : null) ??
         getCanalPalpites(config, 'copa') ??
         interaction.channelId;
 
-      const { rodada, partidas } = rodadaService.getDadosRodadaCopaAberta(interaction.guildId);
+      const faseOption = interaction.options.getInteger('rodada');
+      const rodadasAlvo: Rodada[] =
+        faseOption != null
+          ? [rodadaService.getRodadaCopaPorNumero(interaction.guildId, faseOption, campeonatoId)].filter(
+              (r): r is Rodada => r != null,
+            )
+          : (getDb()
+              .prepare(
+                `SELECT * FROM rodadas
+             WHERE guild_id = ? AND campeonato_id = ? AND modalidade = 'copa' AND status = 'aberta'
+             ORDER BY numero_rodada ASC`,
+              )
+              .all(interaction.guildId, campeonatoId) as Rodada[]);
 
-      await publicarEmbedRodada(interaction.client, rodada, partidas, config, canalId);
+      if (rodadasAlvo.length === 0) {
+        await interaction.editReply({
+          embeds: [
+            buildErrorEmbed(
+              faseOption != null
+                ? `Fase ${faseOption} da Copa nao encontrada ou nao esta aberta.`
+                : 'Nenhuma fase da Copa aberta. Use `/abrir-rodada-copa` primeiro.',
+            ),
+          ],
+        });
+        return;
+      }
+
+      const linhas: string[] = [];
+      for (const rodada of rodadasAlvo) {
+        const partidasAntes = rodadaService.getPartidasRodada(rodada.id).length;
+        const sync = await rodadaService.sincronizarPartidasApi(rodada.id);
+        const partidas = rodadaService.getPartidasRodada(rodada.id);
+        await publicarEmbedRodada(interaction.client, rodada, partidas, config, canalId);
+        const syncMsg = sync.adicionadas > 0 ? ` (+${sync.adicionadas} da API)` : '';
+        linhas.push(
+          `• Fase **${rodada.numero_rodada}** — **${partidas.length}** jogos${syncMsg} _(antes: ${partidasAntes})_`,
+        );
+      }
 
       await interaction.editReply({
         embeds: [
           buildSuccessEmbed(
-            '✅ Embed Copa reenviado!',
-            `A **${rodada.numero_rodada}ª rodada** da Copa foi publicada novamente em <#${canalId}> com **${partidas.length} jogos**.`,
+            '✅ Embed(s) Copa reenviado(s)!',
+            `Publicado em <#${canalId}>:\n\n${linhas.join('\n')}`,
             config.cor_embed,
           ),
         ],
@@ -526,13 +572,85 @@ export const reenviarRodadaCopaCmd: BotCommand = {
 // /abrir-rodada-copa (admin) - abre rodada CHZ sem contrato
 // =====================================================================
 
+type ResultadoFaseCopa =
+  | { status: 'aberta' | 'republicada' | 'ja_ativa'; numeroFase: number; nomeFase: string; jogos: number }
+  | { status: 'sem_jogos'; numeroFase: number; nomeFase: string; jogos: number };
+
+async function ativarFaseCopaChz(
+  interaction: ChatInputCommandInteraction,
+  guildConfig: GuildConfig,
+  campeonatoId: number,
+  canalId: string,
+  entradaWei: bigint,
+  numeroFase: number,
+  rodadaApi: RodadaApi,
+): Promise<ResultadoFaseCopa> {
+  let rodada = rodadaService.getRodadaByNumero(interaction.guildId!, numeroFase, campeonatoId);
+  let partidas = rodada ? rodadaService.getPartidasRodada(rodada.id) : [];
+  let jaExistia = Boolean(rodada?.modalidade === 'copa');
+
+  if (rodada && rodada.modalidade === 'copa') {
+    await rodadaService.sincronizarPartidasApi(rodada.id);
+    partidas = rodadaService.getPartidasRodada(rodada.id);
+  }
+
+  if (!rodada) {
+    const abertura = await rodadaService.abrirRodadaCopa(
+      interaction.guildId!,
+      canalId,
+      numeroFase,
+      campeonatoId,
+      rodadaApi,
+    );
+    rodada = abertura.rodada;
+    partidas = abertura.partidas;
+    jaExistia = false;
+  } else if (rodada.modalidade !== 'copa') {
+    partidas = rodadaService.getPartidasRodada(rodada.id);
+  }
+
+  getDb()
+    .prepare(
+      `UPDATE rodadas
+       SET modalidade = 'copa', entrada_chz_wei = ?, channel_id = ?
+       WHERE id = ?`,
+    )
+    .run(entradaWei.toString(), canalId, rodada.id);
+  rodada.modalidade = 'copa';
+  rodada.entrada_chz_wei = entradaWei.toString();
+  rodada.channel_id = canalId;
+
+  rodada = rodadaService.getRodadaById(rodada.id)!;
+
+  const pub = await garantirEmbedRodadaPublicado(
+    interaction.client,
+    rodada,
+    partidas,
+    guildConfig,
+    canalId,
+  );
+  rodada = rodadaService.getRodadaById(rodada.id)!;
+
+  if (pub.publicado && !jaExistia) {
+    return { status: 'aberta', numeroFase, nomeFase: rodadaApi.nome, jogos: partidas.length };
+  }
+  if (pub.publicado && jaExistia) {
+    return { status: 'republicada', numeroFase, nomeFase: rodadaApi.nome, jogos: partidas.length };
+  }
+  return { status: 'ja_ativa', numeroFase, nomeFase: rodadaApi.nome, jogos: partidas.length };
+}
+
 export const abrirRodadaCopaCmd: BotCommand = {
   data: new SlashCommandBuilder()
     .setName('abrir-rodada-copa')
-    .setDescription('[Admin] Abre rodada Copa no modo CHZ por transferencia (sem contrato)')
+    .setDescription('[Admin] Abre fase(s) da Copa no modo CHZ por transferencia (sem contrato)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addIntegerOption((o) =>
-      o.setName('rodada').setDescription('Numero da rodada na API Futebol').setMinValue(1),
+      o
+        .setName('rodada')
+        .setDescription('Fase da Copa (1=Grupos, 2=Segunda Fase, 3=Oitavas…). Vazio = todas disponiveis')
+        .setMinValue(1)
+        .setMaxValue(7),
     )
     .addStringOption((o) =>
       o
@@ -577,123 +695,92 @@ export const abrirRodadaCopaCmd: BotCommand = {
       return;
     }
 
-    let numeroRodada = interaction.options.getInteger('rodada');
-    if (numeroRodada == null) {
-      const atual = await buscarRodadaAtual(campeonatoId);
-      if (!atual) {
+    const numeroFaseOption = interaction.options.getInteger('rodada');
+
+    try {
+      const fasesParaAbrir =
+        numeroFaseOption != null
+          ? [
+              {
+                numeroFase: numeroFaseOption,
+                rodadaApi: await buscarRodadaCopa(campeonatoId, numeroFaseOption),
+              },
+            ]
+          : await listarFasesCopaDisponiveis(campeonatoId);
+
+      if (fasesParaAbrir.length === 0) {
         await interaction.editReply({
           embeds: [
             buildErrorEmbed(
-              'API nao retornou a rodada atual da Copa. ' +
-                'Informe manualmente: `/abrir-rodada-copa rodada:1` (fase de grupos).',
-            ),
-          ],
-        });
-        return;
-      }
-      numeroRodada = atual;
-    }
-
-    try {
-      const rodadaApi = await buscarRodada(campeonatoId, numeroRodada);
-      const partidasAgendadas = rodadaApi.partidas.filter((p) =>
-        partidaAbertaParaPalpite(p.status, p.data_realizacao_iso),
-      );
-      if (partidasAgendadas.length === 0) {
-        await interaction.editReply({
-          embeds: [buildErrorEmbed(`A rodada ${numeroRodada} nao tem jogos agendados.`)],
-        });
-        return;
-      }
-
-      let rodada = rodadaService.getRodadaByNumero(
-        interaction.guildId,
-        numeroRodada,
-        campeonatoId,
-      );
-      let partidas = rodada ? rodadaService.getPartidasRodada(rodada.id) : [];
-
-      if (rodada && rodada.modalidade === 'copa') {
-        await sincronizarBotoesRodada(interaction.client, rodada);
-        await interaction.editReply({
-          embeds: [
-            buildSuccessEmbed(
-              'CHZ ja estava ativo',
-              `A rodada ${numeroRodada} ja esta em modo CHZ por transferencia.\n` +
-                `Os botoes **Palpitar gratis** e **Bolao CHZ** foram atualizados na mensagem da rodada.`,
+              numeroFaseOption != null
+                ? `A fase ${numeroFaseOption} nao tem jogos agendados na API.`
+                : 'Nenhuma fase da Copa com jogos agendados no momento. Tente informar uma fase: `/abrir-rodada-copa rodada:2`.',
             ),
           ],
         });
         return;
       }
 
-      if (!rodada) {
-        const abertaCopa = rodadaService.getRodadaAbertaPorCampeonato(
-          interaction.guildId,
-          campeonatoId,
+      const resultados: ResultadoFaseCopa[] = [];
+      for (const fase of fasesParaAbrir) {
+        const { numeroFase, rodadaApi } = fase;
+        const agendadas = rodadaApi.partidas.filter((p) =>
+          partidaAbertaParaPalpite(p.status, p.data_realizacao_iso),
         );
-        if (abertaCopa && abertaCopa.numero_rodada !== numeroRodada) {
-          await interaction.editReply({
-            embeds: [
-              buildErrorEmbed(
-                `Ja existe rodada Copa ${abertaCopa.numero_rodada} aberta. Feche-a antes de abrir a ${numeroRodada}.`,
-              ),
-            ],
+        if (agendadas.length === 0) {
+          resultados.push({
+            status: 'sem_jogos',
+            numeroFase,
+            nomeFase: rodadaApi.nome,
+            jogos: 0,
           });
-          return;
+          continue;
         }
-
-        const abertaComNumero =
-          abertaCopa && abertaCopa.numero_rodada === numeroRodada ? abertaCopa : null;
-        if (abertaComNumero) {
-          rodada = abertaComNumero;
-          partidas = rodadaService.getPartidasRodada(rodada.id);
-        } else {
-          const abertura = await rodadaService.abrirRodada(
-            interaction.guildId,
-            canalId,
-            numeroRodada,
-            campeonatoId,
-            rodadaApi,
-          );
-          rodada = abertura.rodada;
-          partidas = abertura.partidas;
-        }
-      }
-
-      getDb()
-        .prepare(
-          `UPDATE rodadas
-           SET modalidade = 'copa', entrada_chz_wei = ?
-           WHERE id = ?`,
-        )
-        .run(entradaWei.toString(), rodada.id);
-      rodada.modalidade = 'copa';
-      rodada.entrada_chz_wei = entradaWei.toString();
-
-      rodada = rodadaService.getRodadaById(rodada.id)!;
-
-      if (!rodada.message_id) {
-        await publicarEmbedRodada(
-          interaction.client,
-          rodada,
-          partidas,
+        const apiComAgendadas = { ...rodadaApi, partidas: agendadas };
+        const resultado = await ativarFaseCopaChz(
+          interaction,
           guildConfig,
+          campeonatoId,
           canalId,
+          entradaWei,
+          numeroFase,
+          apiComAgendadas,
         );
-        rodada = rodadaService.getRodadaById(rodada.id)!;
-      } else {
-        await sincronizarBotoesRodada(interaction.client, rodada);
+        resultados.push(resultado);
       }
+
+      const abertas = resultados.filter((r) => r.status === 'aberta');
+      const republicadas = resultados.filter((r) => r.status === 'republicada');
+      const jaAtivas = resultados.filter((r) => r.status === 'ja_ativa');
+
+      const linhas = resultados.map((r) => {
+        if (r.status === 'sem_jogos') return `• **${r.nomeFase}** — sem jogos agendados`;
+        if (r.status === 'republicada') {
+          return `• **${r.nomeFase}** (fase ${r.numeroFase}) — embed republicado (**${r.jogos}** jogos)`;
+        }
+        if (r.status === 'ja_ativa') {
+          return `• **${r.nomeFase}** (fase ${r.numeroFase}) — ja ativa, botoes atualizados (${r.jogos} jogos)`;
+        }
+        return `• **${r.nomeFase}** (fase ${r.numeroFase}) — aberta com **${r.jogos}** jogos`;
+      });
+
+      const titulo =
+        abertas.length > 0
+          ? `Copa CHZ — ${abertas.length} fase(s) aberta(s)`
+          : republicadas.length > 0
+            ? `Copa CHZ — ${republicadas.length} embed(s) republicado(s)`
+            : jaAtivas.length > 0
+              ? 'Copa CHZ — fases ja estavam ativas'
+              : 'Copa CHZ — nenhuma fase aberta';
 
       await interaction.editReply({
         embeds: [
           buildSuccessEmbed(
-            'Modo CHZ por transferencia ativado!',
-            `Rodada ${numeroRodada} - entrada ${ethers.formatEther(entradaWei)} CHZ\n` +
-              `Destino dos pagamentos: \`${env.chilizPaymentReceiverAddress}\`\n\n` +
-              `Na mensagem da rodada: **Palpitar gratis** e **Bolao CHZ**.\n` +
-              `Ou use \`/palpite\` e \`/bolao-chz\`.\n\n` +
+            titulo,
+            `Entrada ${ethers.formatEther(entradaWei)} CHZ por fase\n` +
+              `Destino: \`${env.chilizPaymentReceiverAddress}\`\n\n` +
+              `${linhas.join('\n')}\n\n` +
+              `Publicado em <#${canalId}>.\n` +
               `Resultados: <#${getCanalResultados(guildConfig, 'copa') ?? canalId}>`,
           ),
         ],

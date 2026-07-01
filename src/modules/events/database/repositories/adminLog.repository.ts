@@ -20,7 +20,7 @@ export class AdminLogRepository {
         entry.action,
         entry.targetType ?? null,
         entry.targetId ?? null,
-        entry.payload ?? null,
+        entry.payload != null ? JSON.stringify(entry.payload) : null,
       ],
     );
   }

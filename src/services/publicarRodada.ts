@@ -50,6 +50,39 @@ export async function publicarEmbedRodada(
   rodadaService.setPublicacaoRodada(rodada.id, canalId, msg.id);
 }
 
+async function mensagemRodadaExiste(client: Client, rodada: Rodada): Promise<boolean> {
+  if (!rodada.message_id || !rodada.channel_id) return false;
+  try {
+    const channel = await client.channels.fetch(rodada.channel_id);
+    if (!channel?.isTextBased()) return false;
+    await channel.messages.fetch(rodada.message_id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Publica o embed se ainda não existir (ou se a mensagem foi apagada); senão só atualiza botões. */
+export async function garantirEmbedRodadaPublicado(
+  client: Client,
+  rodada: Rodada,
+  partidas: PartidaRodada[],
+  config: GuildConfig,
+  canalId: string,
+): Promise<{ publicado: boolean; republicado: boolean }> {
+  if (partidas.length === 0) {
+    throw new Error('Nenhuma partida cadastrada para publicar o embed da rodada.');
+  }
+  const tinhaMessageId = Boolean(rodada.message_id);
+  const mensagemOk = await mensagemRodadaExiste(client, rodada);
+  if (!mensagemOk) {
+    await publicarEmbedRodada(client, rodada, partidas, config, canalId);
+    return { publicado: true, republicado: tinhaMessageId };
+  }
+  await sincronizarBotoesRodada(client, rodada);
+  return { publicado: false, republicado: false };
+}
+
 /** Garante botões corretos (Palpitar grátis + Bolão CHZ) na mensagem publicada da rodada. */
 export async function sincronizarBotoesRodada(
   client: Client,

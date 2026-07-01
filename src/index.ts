@@ -11,9 +11,10 @@ import { startResultadosJob } from './jobs/verificarResultados';
 import { checarConexao } from './blockchain/chiliz';
 import { startHttpServer, stopHttpServer } from './http/server';
 import { startDapp, stopDapp } from './services/dappLauncher';
-import { log } from './utils/logger';
+import { log, initLogger } from './utils/logger';
 
 async function main(): Promise<void> {
+  initLogger();
   getDb();
 
   const client = createClient();

@@ -130,6 +130,59 @@ function formatAlternativas(alternativas: string[]): string {
     .join('\n');
 }
 
+function estimateQuizDurationSeconds(quiz: Quiz): number {
+  return quiz.perguntas.reduce((sum, q) => sum + (q.tempo ?? quiz.tempoPadrao ?? 20), 0);
+}
+
+function formatDurationPt(totalSeconds: number): string {
+  if (totalSeconds < 60) return `~${totalSeconds} segundos`;
+  const mins = Math.ceil(totalSeconds / 60);
+  return mins === 1 ? '~1 minuto' : `~${mins} minutos`;
+}
+
+function buildQuizStartAnnouncementEmbed(
+  quiz: Quiz,
+  starter: { id: string; username: string },
+  channelId: string,
+): EmbedBuilder {
+  const totalQuestions = quiz.perguntas.length;
+  const estimatedSec = estimateQuizDurationSeconds(quiz);
+  const pontosPadrao = quiz.pontosPadrao ?? 1;
+  const tempoPadrao = quiz.tempoPadrao ?? 20;
+  const tempos = quiz.perguntas.map((q) => q.tempo ?? tempoPadrao);
+  const tempoMin = Math.min(...tempos);
+  const tempoMax = Math.max(...tempos);
+  const tempoLabel =
+    tempoMin === tempoMax
+      ? `${tempoMin}s por pergunta`
+      : `${tempoMin}s–${tempoMax}s por pergunta`;
+
+  let description = [
+    `O quiz **${quiz.titulo}** está começando neste canal.`,
+    '',
+    '> Responda clicando nos botões **A, B, C…** em cada pergunta.',
+    '> A **primeira pergunta** será enviada em **5 segundos**.',
+  ].join('\n');
+  if (quiz.descricao?.trim()) {
+    description = `**Sobre o quiz**\n${quiz.descricao.trim()}\n\n${description}`;
+  }
+
+  return new EmbedBuilder()
+    .setTitle('🎮 Quiz iniciado!')
+    .setDescription(description)
+    .addFields(
+      { name: '👤 Iniciado por', value: `<@${starter.id}> (${starter.username})`, inline: true },
+      { name: '📝 Perguntas', value: String(totalQuestions), inline: true },
+      { name: '⏱️ Duração estimada', value: formatDurationPt(estimatedSec), inline: true },
+      { name: '⏳ Tempo por pergunta', value: tempoLabel, inline: true },
+      { name: '🎯 Pontuação', value: `**${pontosPadrao}** pt(s) por acerto (padrão)`, inline: true },
+      { name: '📍 Canal', value: `<#${channelId}>`, inline: true },
+    )
+    .setColor(0x5865f2)
+    .setFooter({ text: `Quiz · ID ${quiz.id}` })
+    .setTimestamp();
+}
+
 function buildQuestionEmbed(
   quiz: Quiz,
   q: QuizQuestion,
@@ -366,6 +419,11 @@ async function handleQuizStart(interaction: ChatInputCommandInteraction): Promis
     progresso: 0,
   });
   await interaction.reply({ content: `✅ Quiz **${quiz.titulo}** iniciado!`, flags: MessageFlags.Ephemeral });
+  await (channel as TextChannel).send({
+    embeds: [buildQuizStartAnnouncementEmbed(quiz, interaction.user, channel.id)],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  if (!activeQuizzes.has(channel.id) || activeQuizzes.get(channel.id) !== active) return;
   await sendQuestion(channel as TextChannel, quiz, 0, active);
 }
 

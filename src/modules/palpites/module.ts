@@ -9,11 +9,17 @@ import {
 
 const PALPITE_ACTIONS = new Set([
   'palpitar',
+  'select-partida',
+  'modal-palpite',
+  'meus-palpites',
+  'ver-acertos',
+  'ranking-rodada',
+  'ranking-mais',
   'bolao-chz',
   'apostar-chz',
-  'ranking-rodada',
-  'ranking-geral',
-  'confirmar-palpite',
+  'bolao-chz-pagar',
+  'select-bolao-chz',
+  'modal-bolao-chz',
 ]);
 
 function isPalpitesInteraction(interaction: Interaction): boolean {

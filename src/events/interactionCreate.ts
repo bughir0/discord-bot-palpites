@@ -53,8 +53,32 @@ export function registerInteractionEvent(client: Client): void {
         return;
       }
 
+      let handled = false;
       for (const mod of modules) {
-        if (mod.handleInteraction && (await mod.handleInteraction(interaction))) return;
+        if (mod.handleInteraction && (await mod.handleInteraction(interaction))) {
+          handled = true;
+          break;
+        }
+      }
+
+      if (
+        !handled &&
+        (interaction.isButton() ||
+          interaction.isStringSelectMenu() ||
+          interaction.isModalSubmit())
+      ) {
+        const customId = 'customId' in interaction ? interaction.customId : '?';
+        log.warn(`Interação sem handler: ${customId}`);
+        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+          await interaction.reply({
+            embeds: [
+              buildErrorEmbed(
+                'Esta interação não pôde ser processada. Tente novamente ou avise um admin.',
+              ),
+            ],
+            flags: MessageFlags.Ephemeral,
+          });
+        }
       }
     } catch (error) {
       log.error('Erro na interação:', error);

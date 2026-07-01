@@ -2,10 +2,11 @@ import { ethers } from 'ethers';
 import type { FastifyInstance } from 'fastify';
 import { env } from '../../config';
 import { getDb } from '../../db/database';
+import { labelFaseCopa } from '../../embeds/theme';
 import { partidaAbertaParaPalpite } from '../../services/pontuacao';
 import { rodadaService } from '../../services/rodadaService';
 import { walletLinkService } from '../../services/onchain/walletLinkService';
-import type { Rodada } from '../../types';
+import type { PartidaRodada, Rodada } from '../../types';
 
 function resolverGuildId(queryGuildId?: string): string | null {
   return queryGuildId?.trim() || env.discordGuildId || null;
@@ -35,9 +36,42 @@ function resolverNomeUsuario(discordUserId: string): string {
   return row?.discord_username || `usuario-${discordUserId.slice(0, 6)}`;
 }
 
+function mapPartidasSite(partidas: PartidaRodada[]) {
+  return partidas.map((p) => ({
+    partidaId: p.partida_id,
+    timeMandante: p.time_mandante,
+    timeVisitante: p.time_visitante,
+    siglaMandante: p.sigla_mandante,
+    siglaVisitante: p.sigla_visitante,
+    escudoMandante: p.escudo_mandante,
+    escudoVisitante: p.escudo_visitante,
+    dataIso: p.data_realizacao_iso,
+    status: p.status,
+    placarMandante: p.placar_mandante,
+    placarVisitante: p.placar_visitante,
+    processada: p.processada === 1,
+    abertaParaPalpite: partidaAbertaParaPalpite(
+      p.status,
+      p.data_realizacao_iso,
+      p.processada,
+    ),
+  }));
+}
+
+function mapRodadaSite(rodada: Rodada) {
+  return {
+    id: rodada.id,
+    numeroRodada: rodada.numero_rodada,
+    nomeFase: labelFaseCopa(rodada.numero_rodada),
+    status: rodada.status,
+    modalidade: rodada.modalidade,
+    entradaCHZWei: rodada.entrada_chz_wei,
+  };
+}
+
 export function registerSiteRoutes(app: FastifyInstance): void {
   app.get('/api/site/estado', async (request, reply) => {
-    const query = request.query as { guildId?: string } | undefined;
+    const query = request.query as { guildId?: string; fase?: string; numeroRodada?: string } | undefined;
     const guildId = resolverGuildId(query?.guildId);
     if (!guildId) {
       return reply.code(400).send({
@@ -46,10 +80,26 @@ export function registerSiteRoutes(app: FastifyInstance): void {
       });
     }
 
-    const rodada =
-      rodadaService.getRodadaCopaAberta(guildId) ?? getUltimaRodadaCopa(guildId);
+    const campeonatoId = env.copaCampeonatoId;
+    const fasesCadastradas =
+      campeonatoId != null ? rodadaService.listarRodadasCopa(guildId, campeonatoId) : [];
+
+    const numeroFaseQuery = Number(query?.fase ?? query?.numeroRodada ?? 0);
+    let rodada: Rodada | null = null;
+    if (numeroFaseQuery > 0 && campeonatoId != null) {
+      rodada = rodadaService.getRodadaCopaPorNumero(guildId, numeroFaseQuery, campeonatoId);
+    }
     if (!rodada) {
-      return { guildId, rodada: null };
+      rodada =
+        rodadaService.getRodadaCopaAberta(guildId) ?? getUltimaRodadaCopa(guildId);
+    }
+
+    if (!rodada) {
+      return {
+        guildId,
+        rodada: null,
+        fases: fasesCadastradas.map(mapRodadaSite),
+      };
     }
 
     const partidas = rodadaService.getPartidasRodada(rodada.id);
@@ -57,32 +107,9 @@ export function registerSiteRoutes(app: FastifyInstance): void {
 
     return {
       guildId,
-      rodada: {
-        id: rodada.id,
-        numeroRodada: rodada.numero_rodada,
-        status: rodada.status,
-        modalidade: rodada.modalidade,
-        entradaCHZWei: rodada.entrada_chz_wei,
-      },
-      partidas: partidas.map((p) => ({
-        partidaId: p.partida_id,
-        timeMandante: p.time_mandante,
-        timeVisitante: p.time_visitante,
-        siglaMandante: p.sigla_mandante,
-        siglaVisitante: p.sigla_visitante,
-        escudoMandante: p.escudo_mandante,
-        escudoVisitante: p.escudo_visitante,
-        dataIso: p.data_realizacao_iso,
-        status: p.status,
-        placarMandante: p.placar_mandante,
-        placarVisitante: p.placar_visitante,
-        processada: p.processada === 1,
-        abertaParaPalpite: partidaAbertaParaPalpite(
-          p.status,
-          p.data_realizacao_iso,
-          p.processada,
-        ),
-      })),
+      rodada: mapRodadaSite(rodada),
+      fases: fasesCadastradas.map(mapRodadaSite),
+      partidas: mapPartidasSite(partidas),
       ranking: ranking.slice(0, 20),
     };
   });

@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import type { Client } from 'discord.js';
 import { env } from '../config';
-import { ApiFutebolError, getApiUsageToday, isApiQuotaExhausted } from '../services/apiFutebol';
+import { ApiFutebolError, isApiQuotaExhausted } from '../services/apiFutebol';
 import { configService } from '../services/configService';
 import { isMaintenanceActive } from '../services/maintenanceMode';
 import { partidaProntaParaVerificar } from '../services/pontuacao';
@@ -25,7 +25,7 @@ async function publicarSeFinalizada(
 
   try {
     const { canalId, partidasPublicadas } = await publicarResultadosRodada(client, rodada, config);
-    log.detail(
+    log.info(
       `Rodada ${rodada.numero_rodada}: ${partidasPublicadas} resultado(s) publicado(s) em <#${canalId}>.`,
     );
     return true;
@@ -36,75 +36,70 @@ async function publicarSeFinalizada(
 }
 
 async function verificarResultados(client: Client): Promise<void> {
-  if (isMaintenanceActive()) {
-    log.detail('Modo manutenção — pulando verificação de resultados.');
-    return;
-  }
-
-  const uso = getApiUsageToday();
-  log.job('⏰', 'Verificação resultados', `API ${uso.count}/${uso.limit}`);
+  if (isMaintenanceActive()) return;
 
   if (isApiQuotaExhausted()) {
-    log.detail('Cota diária esgotada — pulando verificação.');
+    log.once(
+      'api-quota-resultados',
+      60 * 60_000,
+      'warn',
+      'Cota diária da API esgotada — verificação de resultados pausada.',
+    );
     return;
   }
 
   const rodadas = rodadaService.getRodadasAtivas();
-  if (rodadas.length === 0) {
-    log.detail('Nenhuma rodada aberta/fechada no banco.');
-    return;
-  }
+  if (rodadas.length === 0) return;
+
+  let acaoRealizada = false;
+  const resumos: string[] = [];
 
   for (const rodada of rodadas) {
     const config = configService.getOrCreate(rodada.guild_id);
-    if (!config.auto_verificar) {
-      log.detail(`Rodada ${rodada.numero_rodada}: auto-verificar desligado.`);
-      continue;
-    }
+    if (!config.auto_verificar) continue;
 
-    // Catch-up: rodada já finalizada mas resultados nunca publicados (bot offline antes).
     const snapshot = rodadaService.getRodadaById(rodada.id);
     if (snapshot && (await publicarSeFinalizada(client, snapshot, config))) {
+      acaoRealizada = true;
+      resumos.push(`rodada ${rodada.numero_rodada} publicada`);
       continue;
     }
 
     const pendentes = rodadaService.getPartidasRodada(rodada.id).filter((p) => !p.processada);
     const elegiveis = pendentes.filter((p) => partidaProntaParaVerificar(p.data_realizacao_iso));
-    if (elegiveis.length === 0) {
-      log.detail(
-        `Rodada ${rodada.numero_rodada}: ${pendentes.length} jogo(s) pendente(s), nenhum passou de ~105 min do horário — sem request.`,
-      );
-      continue;
-    }
+    if (elegiveis.length === 0) continue;
 
     try {
-      log.detail(
-        `Rodada ${rodada.numero_rodada}: consultando API (${elegiveis.length} jogo(s) elegível(is))…`,
-      );
       const { partidasFinalizadas } = await rodadaService.verificarResultadosRodada(rodada.id);
       const rodadaAtualizada = rodadaService.getRodadaById(rodada.id);
+      if (partidasFinalizadas === 0) continue;
+
+      acaoRealizada = true;
       const progresso = rodadaService.contarProgressoRodada(rodada.id);
 
-      if (partidasFinalizadas === 0) {
-        log.detail(`Rodada ${rodada.numero_rodada}: nenhum jogo com resultado disponível ainda.`);
+      if (!rodadaAtualizada) {
+        resumos.push(`rodada ${rodada.numero_rodada}: ${partidasFinalizadas} jogo(s)`);
         continue;
       }
 
-      if (!rodadaAtualizada) continue;
-
       if (rodadaAtualizada.status !== 'finalizada') {
-        log.detail(
-          `Rodada ${rodada.numero_rodada}: ${partidasFinalizadas} jogo(s) processado(s) · ${progresso.processados}/${progresso.total} concluídos · publicação no fim da rodada.`,
+        resumos.push(
+          `rodada ${rodada.numero_rodada}: ${partidasFinalizadas} jogo(s) · ${progresso.processados}/${progresso.total}`,
         );
         continue;
       }
 
-      await publicarSeFinalizada(client, rodadaAtualizada, config);
+      if (await publicarSeFinalizada(client, rodadaAtualizada, config)) {
+        resumos.push(`rodada ${rodada.numero_rodada} finalizada e publicada`);
+      }
     } catch (error) {
       if (error instanceof ApiFutebolError && error.status === 429) return;
       log.error(`Erro ao verificar rodada ${rodada.id}:`, error);
+      acaoRealizada = true;
     }
   }
+
+  log.jobResult('Verificação resultados', acaoRealizada, resumos.join(' · ') || 'nenhuma alteração');
 }
 
 export function startResultadosJob(client: Client): void {

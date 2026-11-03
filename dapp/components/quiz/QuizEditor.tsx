@@ -170,9 +170,15 @@ export function QuizEditor({
       onNotify({ type: "error", text: "Preencha o enunciado." })
       return
     }
+    const corretaTexto = (newQuestion.alternativas[newQuestion.corretaIndex] ?? "").trim()
     const alternativas = newQuestion.alternativas.map((a) => a.trim()).filter(Boolean)
+    const corretaIndex = alternativas.indexOf(corretaTexto)
     if (alternativas.length < 2) {
       onNotify({ type: "error", text: "Preencha pelo menos 2 alternativas." })
+      return
+    }
+    if (!corretaTexto || corretaIndex < 0) {
+      onNotify({ type: "error", text: "Marque uma alternativa correta preenchida." })
       return
     }
     try {
@@ -180,7 +186,7 @@ export function QuizEditor({
       const data = await quizApi.addQuestion(quiz.id, {
         enunciado: newQuestion.enunciado,
         alternativas,
-        corretaIndex: newQuestion.corretaIndex,
+        corretaIndex,
         tempo: newQuestion.tempo,
         pontos: newQuestion.pontos,
       });

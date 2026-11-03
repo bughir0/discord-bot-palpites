@@ -79,8 +79,9 @@ export function registerQuizRoutes(fastify: FastifyInstance): void {
   });
 
   fastify.post<{ Params: { id: string } }>('/quizzes/:id/questions', async (req) => {
+    if (!quizStore.getQuiz(req.params.id)) return { ok: false, error: 'Quiz não encontrado' };
     const quiz = quizStore.addQuestion(req.params.id, req.body as Partial<QuizQuestion>);
-    if (!quiz) return { ok: false, error: 'Quiz não encontrado' };
+    if (!quiz) return { ok: false, error: 'A alternativa correta não corresponde às opções.' };
     return { ok: true, quiz };
   });
   fastify.post<{ Params: { id: string } }>('/quizzes/:id/questions/bulk', async (req) => {
@@ -90,8 +91,9 @@ export function registerQuizRoutes(fastify: FastifyInstance): void {
     return { ok: true, quiz: result.quiz, added: result.added, skipped: result.skipped };
   });
   fastify.put<{ Params: { id: string; questionId: string } }>('/quizzes/:id/questions/:questionId', async (req) => {
+    if (!quizStore.getQuiz(req.params.id)) return { ok: false, error: 'Quiz não encontrado' };
     const quiz = quizStore.updateQuestion(req.params.id, req.params.questionId, req.body as Partial<QuizQuestion>);
-    if (!quiz) return { ok: false, error: 'Não encontrado' };
+    if (!quiz) return { ok: false, error: 'A alternativa correta não corresponde às opções.' };
     return { ok: true, quiz };
   });
   fastify.delete<{ Params: { id: string; questionId: string } }>('/quizzes/:id/questions/:questionId', async (req) => {

@@ -19,11 +19,10 @@ const ConnectButton = dynamic(
 
 const NAV = [
   { href: "/", label: "Início" },
-  { href: "/palpites", label: "Palpites" },
   { href: "/quiz", label: "Quiz" },
 ] as const;
 
-const WALLET_ROUTES = ["/palpites", "/bolao", "/vincular-wallet"];
+const WALLET_ROUTES = ["/bolao", "/vincular-wallet"];
 
 type AuthUser = {
   id: string;

@@ -4,20 +4,6 @@ import { SiteMain } from "@/components/SiteMain";
 
 const PORTALS = [
   {
-    id: "palpites",
-    href: "/palpites",
-    emoji: "⚽",
-    tag: "Copa 2026",
-    title: "Palpites",
-    subtitle: "Bolão da Copa on-chain",
-    desc: "Palpite grátis no Discord ou entre no modo CHZ com validação por tx hash. Ranking ao vivo e rodadas pelo site.",
-    cta: "Abrir palpites",
-    accent: "from-chiliz/25 via-chiliz/5 to-transparent",
-    border: "border-chiliz/35 hover:border-chiliz/60",
-    glow: "shadow-chiliz/20",
-    delay: 1,
-  },
-  {
     id: "quiz",
     href: "/quiz",
     emoji: "🧠",
@@ -29,7 +15,7 @@ const PORTALS = [
     accent: "from-purple-600/25 via-violet-900/10 to-transparent",
     border: "border-purple-500/30 hover:border-purple-400/50",
     glow: "shadow-purple-500/15",
-    delay: 2,
+    delay: 1,
   },
 ] as const;
 
@@ -50,8 +36,7 @@ export default function HomePage() {
           </h1>
 
           <p className="mx-auto mt-5 max-w-xl text-base text-zinc-400 sm:text-lg">
-            Um só lugar para palpitar na Copa ou rodar o quiz no Palpito.
-            Conecte a wallet quando precisar — o resto é só clicar.
+            Entre no painel para gerenciar as perguntas do quiz no Discord.
           </p>
         </section>
 
@@ -62,8 +47,7 @@ export default function HomePage() {
         </section>
 
         <p className="animate-fade-up animate-fade-up-delay-3 mx-auto mt-10 max-w-lg text-center text-sm text-zinc-500">
-          Palpites e quiz rodam no mesmo bot do Discord. Abra pelo site ou use os
-          comandos <span className="text-zinc-400">/palpite</span> e{" "}
+          O quiz roda no bot do Discord. Abra o painel pelo site ou use o comando{" "}
           <span className="text-zinc-400">/quiz</span> no servidor.
         </p>
       </SiteMain>

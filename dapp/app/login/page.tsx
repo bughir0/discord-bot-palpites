@@ -134,15 +134,7 @@ function LoginContent() {
             </button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-zinc-500">
-            Palpites continuam públicos em{" "}
-            <Link href="/palpites" className="text-chiliz-gold hover:underline">
-              /palpites
-            </Link>
-            .
-          </p>
-
-          <div className="mt-4 text-center">
+          <div className="mt-6 text-center">
             <Link href="/" className="btn-secondary inline-flex">
               Voltar ao hub
             </Link>

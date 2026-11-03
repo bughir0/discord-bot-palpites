@@ -86,17 +86,41 @@ function parseAiJson(text: string): { questions: unknown[] } {
   return data as { questions: unknown[] }
 }
 
+function alignCorrectIndex(alternativas: string[], raw: Record<string, unknown>): number | null {
+  const corretaText = String(raw.correta ?? raw.resposta ?? "").trim()
+  if (corretaText) {
+    const exact = alternativas.findIndex((alt) => alt === corretaText)
+    if (exact >= 0) return exact
+    const folded = corretaText.toLocaleLowerCase("pt-BR")
+    const loose = alternativas.findIndex((alt) => alt.toLocaleLowerCase("pt-BR") === folded)
+    if (loose >= 0) return loose
+  }
+
+  const letter = String(raw.corretaLetra ?? "").trim().toUpperCase()
+  if (/^[A-F]$/.test(letter)) {
+    const idx = letter.charCodeAt(0) - 65
+    if (idx >= 0 && idx < alternativas.length) return idx
+  }
+
+  const n = Number(raw.corretaIndex)
+  if (Number.isInteger(n) && n >= 0 && n < alternativas.length) return n
+  return null
+}
+
 function normalizeOne(raw: unknown): ParsedQuestionDraft | null {
   if (!raw || typeof raw !== "object") return null
   const o = raw as Record<string, unknown>
   const enunciado = String(o.enunciado ?? "").trim()
-  const alternativas = Array.isArray(o.alternativas)
-    ? o.alternativas.map((x) => String(x ?? "").trim()).filter(Boolean)
+  const rawAlts = Array.isArray(o.alternativas)
+    ? o.alternativas.map((x) => String(x ?? "").trim())
     : []
-  let corretaIndex = Number(o.corretaIndex ?? 0)
-  if (!Number.isInteger(corretaIndex)) corretaIndex = 0
-  if (enunciado.length < 2 || alternativas.length < 2) return null
-  if (corretaIndex < 0 || corretaIndex >= alternativas.length) corretaIndex = 0
+  if (enunciado.length < 2) return null
+  const marked = alignCorrectIndex(rawAlts, o)
+  if (marked == null) return null
+  const corretaTexto = rawAlts[marked]
+  const alternativas = rawAlts.filter(Boolean)
+  const corretaIndex = alternativas.indexOf(corretaTexto)
+  if (!corretaTexto || corretaIndex < 0 || alternativas.length < 2) return null
   return { enunciado, alternativas, corretaIndex }
 }
 
@@ -143,7 +167,7 @@ Regras absolutas:
 - Se o tema for cinema/séries BR: prefira obras e nomes famosos (ex.: Cidade de Deus, Tropa de Elite, Central do Brasil). Se não tiver certeza sobre um filme obscuro, NÃO use.
 - Cada pergunta: enunciado claro, 4 alternativas, exatamente 1 correta; distratores plausíveis mas errados.
 - Evite perguntas ambíguas ou com mais de uma resposta aceitável.
-- Varie corretaIndex entre 0, 1, 2 e 3 — não coloque sempre a correta na letra A.
+- Não embaralhe as alternativas depois de escolher a correta. A string em "correta" tem de ser cópia exata de uma alternativa, e corretaIndex é o índice dessa mesma string.
 - Responda APENAS JSON válido, sem markdown.`
       : `You write factual quiz questions. Only verifiable facts. Never invent names, dates, or titles. One correct answer per question. JSON only.`
 
@@ -153,9 +177,9 @@ Quantidade neste lote: exatamente ${count} pergunta(s).
 ${difficultyRules(difficulty, language)}${batchNote}
 
 Formato (JSON puro):
-{"questions":[{"enunciado":"...","alternativas":["...","...","...","..."],"corretaIndex":0}]}
+{"questions":[{"enunciado":"...","alternativas":["...","...","...","..."],"correta":"texto exato da alternativa correta","corretaIndex":0}]}
 
-corretaIndex = índice 0..3 da alternativa correta.`
+"correta" e alternativas[corretaIndex] precisam ser o mesmo texto. Não reordene a lista depois disso.`
 
   return { system, user }
 }

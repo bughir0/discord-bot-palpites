@@ -10,9 +10,9 @@ import { quizApi } from "@/lib/quiz-api";
 type QuestionRow = Quiz["perguntas"][number]
 
 function padAlternativasFour(alts: string[]) {
-  const a = [...alts]
+  const a = [...alts].slice(0, 6)
   while (a.length < 4) a.push("")
-  return a.slice(0, 4)
+  return a
 }
 
 type BotConfig = {
@@ -190,13 +190,17 @@ export function QuizPanel() {
       notify({ type: "error", text: "Preencha o enunciado." })
       return
     }
+    const corretaTexto = (editQuestionDraft.alternativas[editQuestionDraft.corretaIndex] ?? "").trim()
     const alternativas = editQuestionDraft.alternativas.map((a) => a.trim()).filter(Boolean)
+    const corretaIndex = alternativas.indexOf(corretaTexto)
     if (alternativas.length < 2) {
       notify({ type: "error", text: "Preencha pelo menos 2 alternativas." })
       return
     }
-    let corretaIndex = editQuestionDraft.corretaIndex
-    if (corretaIndex < 0 || corretaIndex >= alternativas.length) corretaIndex = 0
+    if (!corretaTexto || corretaIndex < 0) {
+      notify({ type: "error", text: "Marque uma alternativa correta preenchida." })
+      return
+    }
     try {
       setLoading(true);
       const data = await quizApi.updateQuestion(quizId, questionId, {

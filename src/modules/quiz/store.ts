@@ -20,6 +20,21 @@ export type Quiz = {
   perguntas: QuizQuestion[];
 };
 
+/** Mantém a alternativa marcada, mesmo se campos vazios forem removidos. */
+export function resolveQuestionChoices(
+  alternativas: string[] | undefined,
+  corretaIndex: number | undefined,
+): { alternativas: string[]; corretaIndex: number } | null {
+  const raw = (alternativas ?? []).map((s) => String(s));
+  const marked = Number(corretaIndex);
+  const corretaTexto = Number.isInteger(marked) ? String(raw[marked] ?? '').trim() : '';
+  const kept = raw.map((s) => s.trim()).filter(Boolean);
+  if (!corretaTexto || kept.length < 2) return null;
+  const idx = kept.indexOf(corretaTexto);
+  if (idx < 0) return null;
+  return { alternativas: kept, corretaIndex: idx };
+}
+
 export type QuizStatus = {
   quizId: string;
   quizTitle: string;
@@ -166,11 +181,13 @@ export const quizStore = {
   addQuestion(quizId: string, q: Partial<QuizQuestion>): Quiz | null {
     const quiz = memory.quizzes.find((x) => x.id === quizId);
     if (!quiz) return null;
+    const choices = resolveQuestionChoices(q.alternativas, q.corretaIndex);
+    if (!choices) return null;
     quiz.perguntas.push({
       id: q.id ?? newId(),
       enunciado: q.enunciado ?? 'Pergunta',
-      alternativas: q.alternativas ?? [],
-      corretaIndex: q.corretaIndex ?? 0,
+      alternativas: choices.alternativas,
+      corretaIndex: choices.corretaIndex,
       tempo: q.tempo ?? quiz.tempoPadrao,
       pontos: q.pontos ?? quiz.pontosPadrao,
     });
@@ -183,15 +200,13 @@ export const quizStore = {
     let added = 0;
     let skipped = 0;
     for (const q of questions) {
-      const alts = (q.alternativas ?? []).map((s) => String(s).trim()).filter(Boolean);
-      if (alts.length < 2) { skipped++; continue; }
-      let ci = Number(q.corretaIndex ?? 0);
-      if (!Number.isInteger(ci) || ci < 0 || ci >= alts.length) ci = 0;
+      const choices = resolveQuestionChoices(q.alternativas, q.corretaIndex);
+      if (!choices) { skipped++; continue; }
       quiz.perguntas.push({
         id: newId(),
         enunciado: String(q.enunciado ?? '').trim() || 'Sem enunciado',
-        alternativas: alts,
-        corretaIndex: ci,
+        alternativas: choices.alternativas,
+        corretaIndex: choices.corretaIndex,
         tempo: q.tempo ?? quiz.tempoPadrao,
         pontos: q.pontos ?? quiz.pontosPadrao,
       });
@@ -206,12 +221,16 @@ export const quizStore = {
     const idx = quiz.perguntas.findIndex((q) => q.id === questionId);
     if (idx < 0) return null;
     const cur = quiz.perguntas[idx];
-    const alts = patch.alternativas ?? cur.alternativas;
+    const choices = resolveQuestionChoices(
+      patch.alternativas ?? cur.alternativas,
+      patch.corretaIndex ?? cur.corretaIndex,
+    );
+    if (!choices) return null;
     quiz.perguntas[idx] = {
       ...cur,
       ...patch,
-      alternativas: alts,
-      corretaIndex: patch.corretaIndex ?? cur.corretaIndex,
+      alternativas: choices.alternativas,
+      corretaIndex: choices.corretaIndex,
     };
     saveFile(memory);
     return quiz;

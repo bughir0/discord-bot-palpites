@@ -28,6 +28,7 @@ import { quizStore, type Quiz, type QuizQuestion } from './store';
 
 type ActiveQuiz = {
   quizId: string;
+  quiz: Quiz;
   channelId: string;
   currentQuestionIndex: number;
   questionStartTime: number;
@@ -37,6 +38,16 @@ type ActiveQuiz = {
   answeredQuestions: Map<string, Set<number>>;
   answers: Map<string, { questionIndex: number; answerIndex: number }>;
 };
+
+function snapshotQuiz(quiz: Quiz): Quiz {
+  return {
+    ...quiz,
+    perguntas: quiz.perguntas.map((q) => ({
+      ...q,
+      alternativas: [...q.alternativas],
+    })),
+  };
+}
 
 const activeQuizzes = new Map<string, ActiveQuiz>();
 
@@ -393,13 +404,15 @@ async function handleQuizStart(interaction: ChatInputCommandInteraction): Promis
     await interaction.reply({ content: '❌ Quiz já ativo. Use `/quiz stop`.', flags: MessageFlags.Ephemeral });
     return;
   }
-  const quiz = quizStore.getQuiz(quizId);
-  if (!quiz?.perguntas.length) {
+  const stored = quizStore.getQuiz(quizId);
+  if (!stored?.perguntas.length) {
     await interaction.reply({ content: '❌ Quiz não encontrado ou vazio.', flags: MessageFlags.Ephemeral });
     return;
   }
+  const quiz = snapshotQuiz(stored);
   const active: ActiveQuiz = {
     quizId: quiz.id,
+    quiz,
     channelId: channel.id,
     currentQuestionIndex: 0,
     questionStartTime: Date.now(),
@@ -503,8 +516,7 @@ async function handleQuizButton(interaction: ButtonInteraction): Promise<boolean
   }
   const qIndex = parseInt(m[2], 10);
   const ansIndex = parseInt(m[3], 10);
-  const quiz = quizStore.getQuiz(active.quizId);
-  if (!quiz) return true;
+  const quiz = active.quiz;
   const question = quiz.perguntas[qIndex];
   if (!question || qIndex !== active.currentQuestionIndex) {
     await interaction.reply({ content: '❌ Pergunta expirada.', flags: MessageFlags.Ephemeral });
